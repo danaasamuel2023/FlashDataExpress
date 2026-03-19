@@ -1,0 +1,16 @@
+<svg width="200" height="200" viewBox="0 0 200 200" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="flash-grad" x1="0" y1="0" x2="200" y2="200" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#F97316" />
+      <stop offset="100%" stop-color="#F43F5E" />
+    </linearGradient>
+  </defs>
+  <!-- Rounded square background -->
+  <rect width="200" height="200" rx="50" fill="url(#flash-grad)" />
+  <!-- Speed lines -->
+  <line x1="30" y1="70" x2="70" y2="70" stroke="white" stroke-width="9" stroke-linecap="round" opacity="0.5" />
+  <line x1="20" y1="100" x2="65" y2="100" stroke="white" stroke-width="9" stroke-linecap="round" opacity="0.4" />
+  <line x1="30" y1="130" x2="70" y2="130" stroke="white" stroke-width="9" stroke-linecap="round" opacity="0.3" />
+  <!-- Lightning bolt -->
+  <path d="M110 30 L80 95 L110 95 L85 170 L150 85 L115 85 L140 30 Z" fill="white" />
+</svg>
