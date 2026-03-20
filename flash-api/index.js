@@ -10,19 +10,24 @@ const app = express();
 // Connect to MongoDB
 connectDB();
 
-// Security middleware
-app.use(helmet());
+// CORS must be before helmet so preflight OPTIONS requests get handled
 const allowedOrigins = [
   process.env.FRONTEND_URL,
-  // Add production URLs here
+  'https://flashdata.store',
+  'https://www.flashdata.store',
 ];
 if (process.env.NODE_ENV !== 'production') {
   allowedOrigins.push('http://localhost:3000', 'http://localhost:3001');
 }
 app.use(cors({
   origin: allowedOrigins.filter(Boolean),
-  credentials: true
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
 }));
+
+// Security middleware
+app.use(helmet());
 
 // Rate limiting
 const limiter = rateLimit({
