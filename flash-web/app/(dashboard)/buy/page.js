@@ -111,7 +111,11 @@ export default function BuyDataPage() {
         }
       }
     } catch (err) {
-      toast.error(err.response?.data?.message || 'Purchase failed');
+      const msg = err.response?.data?.message || 'Purchase failed. Please try again.';
+      toast.error(msg, { duration: 6000 });
+      if (msg.includes('refunded')) {
+        refreshUser();
+      }
     } finally {
       setBuying(false);
     }

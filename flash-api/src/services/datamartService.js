@@ -57,7 +57,7 @@ class DataMartService {
     const client = await this.getClient();
     const res = await client.post('/api/developer/purchase', {
       network,
-      capacity,
+      capacity: String(capacity),
       phoneNumber,
       gateway: 'wallet',
     });
@@ -67,7 +67,12 @@ class DataMartService {
   async checkOrderStatus(reference) {
     const client = await this.getClient();
     const res = await client.get(`/api/developer/order-status/${reference}`);
-    return res.data?.data;
+    const data = res.data?.data;
+    if (data) {
+      // DataMart returns 'orderStatus', normalize to 'status' for internal use
+      data.status = data.orderStatus || data.status;
+    }
+    return data;
   }
 }
 
