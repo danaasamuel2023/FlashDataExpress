@@ -59,6 +59,7 @@ class DataMartService {
       network,
       capacity,
       phoneNumber,
+      gateway: 'wallet',
     });
     return res.data?.data;
   }
