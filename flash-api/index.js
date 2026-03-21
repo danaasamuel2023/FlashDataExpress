@@ -7,6 +7,9 @@ const connectDB = require('./src/config/database');
 
 const app = express();
 
+// Trust proxy (Render uses a reverse proxy)
+app.set('trust proxy', 1);
+
 // Connect to MongoDB
 connectDB();
 
