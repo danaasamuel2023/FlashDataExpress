@@ -218,7 +218,9 @@ router.post('/buy', auth, async (req, res) => {
       purchase.status = 'processing';
       await purchase.save();
     } catch (err) {
+      const providerMessage = err.response?.data?.message || err.message || 'Unknown error';
       purchase.status = 'failed';
+      purchase.failureReason = providerMessage;
       await purchase.save();
       // Refund
       await User.findOneAndUpdate(
@@ -235,7 +237,7 @@ router.post('/buy', auth, async (req, res) => {
         reference: generateReference('RFD'),
         description: `Refund for failed ${capacity}GB ${network} purchase`,
       });
-      return res.status(500).json({ status: 'error', message: 'Purchase failed. Your balance has been refunded.' });
+      return res.status(500).json({ status: 'error', message: `Purchase failed: ${providerMessage}. Your balance has been refunded.` });
     }
 
     // Process referral commission
