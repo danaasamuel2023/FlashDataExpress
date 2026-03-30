@@ -65,7 +65,9 @@ app.use('/api/auth', require('./src/routes/auth'));
 app.use('/api/user', require('./src/routes/user'));
 app.use('/api/wallet', require('./src/routes/wallet'));
 app.use('/api/purchase', require('./src/routes/purchase'));
-// Store routes removed (not used in Flash Data Express)
+app.use('/api/store', require('./src/routes/store'));
+app.use('/api/shop', require('./src/routes/storePublic'));
+app.use('/api/subagent', require('./src/routes/subagent'));
 app.use('/api/withdrawal', require('./src/routes/withdrawal'));
 app.use('/api/referral', require('./src/routes/referral'));
 app.use('/api/webhook', require('./src/routes/webhook'));

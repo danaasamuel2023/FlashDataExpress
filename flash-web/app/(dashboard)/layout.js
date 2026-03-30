@@ -3,7 +3,7 @@ import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import {
-  Home, ShoppingBag, Clock, Wallet, Gift, UserCircle,
+  Home, ShoppingBag, Clock, Wallet, Gift, UserCircle, Store,
   Menu, X, ChevronRight, LogOut, Zap
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
@@ -14,6 +14,7 @@ const navItems = [
   { href: '/buy', label: 'Buy Data', icon: ShoppingBag },
   { href: '/transactions', label: 'Transactions', icon: Clock },
   { href: '/wallet', label: 'Wallet', icon: Wallet },
+  { href: '/store/dashboard', label: 'My Store', icon: Store },
   { href: '/referrals', label: 'Referrals', icon: Gift },
   { href: '/profile', label: 'Profile', icon: UserCircle },
 ];
@@ -89,7 +90,9 @@ export default function DashboardLayout({ children }) {
         <nav className="flex-1 px-3 mt-4 space-y-0.5">
           {navItems.map(item => {
             const Icon = item.icon;
-            const active = pathname === item.href;
+            const active = item.href === '/store/dashboard'
+              ? pathname.startsWith('/store')
+              : pathname === item.href;
             return (
               <Link
                 key={item.href}
@@ -154,7 +157,9 @@ export default function DashboardLayout({ children }) {
             <nav className="flex-1 px-3 mt-4 space-y-0.5 overflow-y-auto">
               {navItems.map(item => {
                 const Icon = item.icon;
-                const active = pathname === item.href;
+                const active = item.href === '/store/dashboard'
+                  ? pathname.startsWith('/store')
+                  : pathname === item.href;
                 return (
                   <Link
                     key={item.href}
