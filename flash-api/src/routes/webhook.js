@@ -3,6 +3,7 @@ const crypto = require('crypto');
 const DataPurchase = require('../models/DataPurchase');
 const User = require('../models/User');
 const Store = require('../models/Store');
+const SubAgent = require('../models/SubAgent');
 const Transaction = require('../models/Transaction');
 const Settings = require('../models/Settings');
 const paystackService = require('../services/paystackService');
@@ -76,6 +77,22 @@ router.post('/datamart', verifyDatamartSignature, async (req, res) => {
               $inc: {
                 totalEarnings: agentProfit,
                 pendingBalance: agentProfit,
+                totalSales: 1,
+              },
+            }
+          );
+        }
+
+        // Credit subagent if applicable
+        const subAgentProfit = purchase.storeDetails.subAgentProfit || 0;
+        const subAgentId = purchase.storeDetails.subAgentId;
+        if (subAgentId && subAgentProfit > 0) {
+          await SubAgent.findOneAndUpdate(
+            { _id: subAgentId },
+            {
+              $inc: {
+                totalEarnings: subAgentProfit,
+                pendingBalance: subAgentProfit,
                 totalSales: 1,
               },
             }
@@ -326,6 +343,11 @@ router.post('/paystack', verifyPaystackSignature, async (req, res) => {
       return res.json({ status: 'success', message: 'Guest purchase processed' });
     }
 
+    // Handle store activation payment (just acknowledge — store created on verify-activation)
+    if (metadata.type === 'store_activation') {
+      return res.json({ status: 'success', message: 'Store activation payment received' });
+    }
+
     // Handle store purchase
     if (metadata.type === 'store_purchase') {
       // Check if already processed
@@ -351,7 +373,20 @@ router.post('/paystack', verifyPaystackSignature, async (req, res) => {
       const storeBasePrices = storeSettings?.pricing?.basePrices || {};
       const verifiedSellingPrice = storeProduct?.sellingPrice || metadata.sellingPrice;
       const verifiedBasePrice = (storeBasePrices[metadata.network] || {})[String(metadata.capacity)] || storeProduct?.basePrice || 0;
-      const agentProfit = verifiedSellingPrice - verifiedBasePrice;
+      let agentProfit = verifiedSellingPrice - verifiedBasePrice;
+
+      // Calculate subagent commission split
+      let subAgentProfit = 0;
+      let subAgentRef = metadata.subAgentId || null;
+      if (subAgentRef) {
+        const subAgent = await SubAgent.findById(subAgentRef);
+        if (subAgent && subAgent.isActive) {
+          subAgentProfit = Math.round((agentProfit * subAgent.commissionPercent / 100) * 100) / 100;
+          agentProfit = Math.round((agentProfit - subAgentProfit) * 100) / 100;
+        } else {
+          subAgentRef = null;
+        }
+      }
 
       // Create purchase record
       const purchase = await DataPurchase.create({
@@ -371,6 +406,8 @@ router.post('/paystack', verifyPaystackSignature, async (req, res) => {
           agentId: store.agentId,
           agentProfit,
           sellingPrice: verifiedSellingPrice,
+          subAgentId: subAgentRef || undefined,
+          subAgentProfit: subAgentProfit || undefined,
         },
       });
 
