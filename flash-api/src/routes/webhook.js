@@ -348,87 +348,9 @@ router.post('/paystack', verifyPaystackSignature, async (req, res) => {
       return res.json({ status: 'success', message: 'Store activation payment received' });
     }
 
-    // Handle store purchase
+    // Store purchases are handled by verify-payment endpoint — just acknowledge the webhook
     if (metadata.type === 'store_purchase') {
-      // Check if already processed
-      const existing = await DataPurchase.findOne({ reference });
-      if (existing) {
-        return res.json({ status: 'success', message: 'Already processed' });
-      }
-
-      const store = await Store.findById(metadata.storeId);
-      if (!store) {
-        return res.status(404).json({ status: 'error', message: 'Store not found' });
-      }
-
-      // Re-fetch prices from store products and backend settings (never trust metadata)
-      const StoreProduct = require('../models/StoreProduct');
-      const storeProduct = await StoreProduct.findOne({
-        storeId: store._id,
-        network: metadata.network,
-        capacity: metadata.capacity,
-        isActive: true,
-      });
-      const storeSettings = await Settings.getSettings();
-      const storeBasePrices = storeSettings?.pricing?.basePrices || {};
-      const verifiedSellingPrice = storeProduct?.sellingPrice || metadata.sellingPrice;
-      const verifiedBasePrice = (storeBasePrices[metadata.network] || {})[String(metadata.capacity)] || storeProduct?.basePrice || 0;
-      let agentProfit = verifiedSellingPrice - verifiedBasePrice;
-
-      // Calculate subagent commission split
-      let subAgentProfit = 0;
-      let subAgentRef = metadata.subAgentId || null;
-      if (subAgentRef) {
-        const subAgent = await SubAgent.findById(subAgentRef);
-        if (subAgent && subAgent.isActive) {
-          subAgentProfit = Math.round((agentProfit * subAgent.commissionPercent / 100) * 100) / 100;
-          agentProfit = Math.round((agentProfit - subAgentProfit) * 100) / 100;
-        } else {
-          subAgentRef = null;
-        }
-      }
-
-      // Create purchase record
-      const purchase = await DataPurchase.create({
-        userId: store.agentId,
-        phoneNumber: metadata.phoneNumber,
-        network: metadata.network,
-        capacity: metadata.capacity,
-        price: verifiedSellingPrice,
-        costPrice: verifiedBasePrice,
-        reference,
-        provider: 'datamart',
-        status: 'pending',
-        purchaseSource: 'store',
-        storeDetails: {
-          storeId: store._id,
-          storeName: store.storeName,
-          agentId: store.agentId,
-          agentProfit,
-          sellingPrice: verifiedSellingPrice,
-          subAgentId: subAgentRef || undefined,
-          subAgentProfit: subAgentProfit || undefined,
-        },
-      });
-
-      // Send to DataMart
-      try {
-        const datamartService = require('../services/datamartService');
-        const result = await datamartService.purchaseData({
-          network: metadata.network,
-          capacity: metadata.capacity,
-          phoneNumber: metadata.phoneNumber,
-        });
-        purchase.datamartReference = result?.reference || result?.orderReference;
-        purchase.status = 'processing';
-        await purchase.save();
-      } catch (err) {
-        purchase.status = 'failed';
-        purchase.failureReason = err.message;
-        await purchase.save();
-      }
-
-      return res.json({ status: 'success', message: 'Store purchase processed' });
+      return res.json({ status: 'success', message: 'Store purchase acknowledged' });
     }
 
     res.json({ status: 'success', message: 'Event processed' });
