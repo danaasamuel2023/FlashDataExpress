@@ -1,14 +1,37 @@
 'use client';
+import { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { ShoppingBag, TrendingUp, Clock, Gift, ArrowRight, Wallet } from 'lucide-react';
+import { ShoppingBag, TrendingUp, Clock, Gift, ArrowRight, Wallet, Package } from 'lucide-react';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
 import NetworkIcon from '@/components/shared/NetworkIcon';
 import { useAuth } from '@/context/AuthContext';
 import { formatCurrency } from '@/lib/constants';
+import api from '@/lib/api';
 
 export default function DashboardPage() {
   const { user } = useAuth();
+  const [orderCount, setOrderCount] = useState(0);
+  const [monthlySpend, setMonthlySpend] = useState(0);
+
+  useEffect(() => {
+    const fetchStats = async () => {
+      try {
+        const res = await api.get('/purchase/history');
+        const orders = res.data.data || [];
+        setOrderCount(orders.length);
+        const now = new Date();
+        const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+        const monthly = orders
+          .filter(o => new Date(o.createdAt) >= monthStart && o.status !== 'failed')
+          .reduce((sum, o) => sum + (o.price || 0), 0);
+        setMonthlySpend(monthly);
+      } catch {
+        // silently fail
+      }
+    };
+    fetchStats();
+  }, []);
 
   return (
     <div className="space-y-6">
@@ -33,17 +56,19 @@ export default function DashboardPage() {
             </div>
           </div>
         </Card>
-        <Card>
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-success/10 rounded-xl flex items-center justify-center">
-              <TrendingUp className="w-5 h-5 text-success" />
+        <Link href="/orders">
+          <Card className="hover:border-primary/20 transition-all cursor-pointer">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 bg-success/10 rounded-xl flex items-center justify-center">
+                <Package className="w-5 h-5 text-success" />
+              </div>
+              <div>
+                <p className="text-xl font-extrabold text-white">{orderCount}</p>
+                <p className="text-xs text-text-muted">Orders</p>
+              </div>
             </div>
-            <div>
-              <p className="text-xl font-extrabold text-white">0</p>
-              <p className="text-xs text-text-muted">Orders</p>
-            </div>
-          </div>
-        </Card>
+          </Card>
+        </Link>
         <Card>
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 bg-accent/10 rounded-xl flex items-center justify-center">
@@ -61,7 +86,7 @@ export default function DashboardPage() {
               <Clock className="w-5 h-5 text-blue-500" />
             </div>
             <div>
-              <p className="text-xl font-extrabold text-white">{formatCurrency(0)}</p>
+              <p className="text-xl font-extrabold text-white">{formatCurrency(monthlySpend)}</p>
               <p className="text-xs text-text-muted">This Month</p>
             </div>
           </div>

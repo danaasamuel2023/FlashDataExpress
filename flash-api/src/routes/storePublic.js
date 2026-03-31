@@ -139,9 +139,9 @@ router.get('/:slug/verify-payment', async (req, res) => {
       isActive: true,
     });
     const storeSettings = await Settings.getSettings();
-    const storeBasePrices = storeSettings?.pricing?.basePrices || {};
+    const platformSellingPrices = storeSettings?.pricing?.sellingPrices || {};
     const verifiedSellingPrice = verifyProduct?.sellingPrice || meta.sellingPrice;
-    const verifiedBasePrice = (storeBasePrices[meta.network] || {})[String(meta.capacity)] || verifyProduct?.basePrice || 0;
+    const verifiedBasePrice = (platformSellingPrices[meta.network] || {})[String(meta.capacity)] || verifyProduct?.basePrice || 0;
     let agentProfit = verifiedSellingPrice - verifiedBasePrice;
 
     let subAgentProfit = 0;
