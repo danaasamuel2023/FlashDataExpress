@@ -198,7 +198,7 @@ export default function DashboardLayout({ children }) {
         href="https://whatsapp.com/channel/0029VbByiD37DAWv3LzCXM42"
         target="_blank"
         rel="noopener noreferrer"
-        className={`fixed z-30 right-4 w-12 h-12 bg-[#25D366] hover:bg-[#1ebe57] rounded-full flex items-center justify-center shadow-lg shadow-[#25D366]/30 transition-all hover:scale-110 ${isMobile ? 'bottom-20' : 'bottom-6'}`}
+        className={`fixed z-30 left-4 w-12 h-12 bg-[#25D366] hover:bg-[#1ebe57] rounded-full flex items-center justify-center shadow-lg shadow-[#25D366]/30 transition-all hover:scale-110 ${isMobile ? 'bottom-20' : 'bottom-6'}`}
         title="Join our WhatsApp channel"
       >
         <svg className="w-6 h-6 text-white" viewBox="0 0 24 24" fill="currentColor">
