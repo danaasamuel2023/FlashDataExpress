@@ -1,11 +1,501 @@
 const router = require('express').Router();
+const jwt = require('jsonwebtoken');
+const { body, validationResult } = require('express-validator');
 const auth = require('../middleware/auth');
 const Store = require('../models/Store');
+const StoreProduct = require('../models/StoreProduct');
 const SubAgent = require('../models/SubAgent');
+const SubAgentProduct = require('../models/SubAgentProduct');
 const User = require('../models/User');
 const DataPurchase = require('../models/DataPurchase');
+const { formatPhone } = require('../utils/helpers');
 
-// POST /api/subagent/invite
+// Middleware: authenticate sub-agent via JWT (same token system, but verifies they are a sub-agent)
+const subagentAuth = async (req, res, next) => {
+  try {
+    const token = req.header('x-auth-token') || req.header('Authorization')?.replace('Bearer ', '');
+    if (!token) return res.status(401).json({ status: 'error', message: 'No token provided' });
+
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    const user = await User.findById(decoded.id);
+    if (!user || !user.isActive) return res.status(401).json({ status: 'error', message: 'Invalid token' });
+
+    const subAgent = await SubAgent.findOne({ userId: user._id, status: 'registered', isActive: true })
+      .populate('storeId', 'storeName storeSlug agentId');
+    if (!subAgent) return res.status(403).json({ status: 'error', message: 'Not a registered sub-agent' });
+
+    req.user = user;
+    req.subAgent = subAgent;
+    next();
+  } catch (err) {
+    res.status(401).json({ status: 'error', message: 'Invalid token' });
+  }
+};
+
+// ─── PARENT AGENT ROUTES (require auth) ───
+
+// POST /api/subagent/generate-invite — Parent agent generates an invite link
+router.post('/generate-invite', auth, async (req, res) => {
+  try {
+    const store = await Store.findOne({ agentId: req.user._id });
+    if (!store) {
+      return res.status(404).json({ status: 'error', message: 'You need a store first' });
+    }
+
+    const inviteCode = store.storeName.substring(0, 3).toUpperCase().replace(/[^A-Z]/g, 'X') +
+      'INV' +
+      Math.random().toString(36).substring(2, 8).toUpperCase();
+
+    const subAgent = await SubAgent.create({
+      storeId: store._id,
+      parentAgentId: req.user._id,
+      inviteCode,
+      status: 'pending',
+    });
+
+    const inviteLink = `${process.env.FRONTEND_URL || 'http://localhost:3000'}/subagent/register/${inviteCode}`;
+
+    res.status(201).json({
+      status: 'success',
+      data: {
+        inviteCode,
+        inviteLink,
+        subAgentId: subAgent._id,
+      },
+    });
+  } catch (err) {
+    if (err.code === 11000) {
+      return res.status(400).json({ status: 'error', message: 'Failed to generate invite. Please try again.' });
+    }
+    console.error('SubAgent generate-invite error:', err.message);
+    res.status(500).json({ status: 'error', message: 'Something went wrong. Please try again.' });
+  }
+});
+
+// GET /api/subagent/invite-info/:code — Public: get info about an invite
+router.get('/invite-info/:code', async (req, res) => {
+  try {
+    const subAgent = await SubAgent.findOne({
+      inviteCode: req.params.code.toUpperCase(),
+      status: 'pending',
+    }).populate('storeId', 'storeName storeSlug description theme');
+
+    if (!subAgent) {
+      return res.status(404).json({ status: 'error', message: 'Invalid or expired invite link' });
+    }
+
+    const parentAgent = await User.findById(subAgent.parentAgentId).select('name');
+
+    res.json({
+      status: 'success',
+      data: {
+        storeName: subAgent.storeId?.storeName,
+        storeDescription: subAgent.storeId?.description,
+        parentAgentName: parentAgent?.name,
+        inviteCode: subAgent.inviteCode,
+      },
+    });
+  } catch (err) {
+    console.error('SubAgent invite-info error:', err.message);
+    res.status(500).json({ status: 'error', message: 'Something went wrong. Please try again.' });
+  }
+});
+
+// POST /api/subagent/register — Public: sub-agent registers via invite code
+router.post('/register', [
+  body('inviteCode').trim().notEmpty().withMessage('Invite code is required'),
+  body('name').trim().notEmpty().withMessage('Name is required'),
+  body('email').isEmail().normalizeEmail().withMessage('Valid email is required'),
+  body('password').isLength({ min: 6 }).withMessage('Password must be at least 6 characters'),
+  body('phoneNumber').trim().notEmpty().withMessage('Phone number is required'),
+  body('storeName').trim().notEmpty().withMessage('Store name is required'),
+], async (req, res) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ status: 'error', message: errors.array()[0].msg });
+    }
+
+    const { inviteCode, name, email, password, phoneNumber, storeName } = req.body;
+    const formattedPhone = formatPhone(phoneNumber);
+
+    // Find the pending invite
+    const subAgent = await SubAgent.findOne({
+      inviteCode: inviteCode.toUpperCase(),
+      status: 'pending',
+    }).populate('storeId');
+
+    if (!subAgent) {
+      return res.status(404).json({ status: 'error', message: 'Invalid or expired invite link' });
+    }
+
+    // Check if email/phone already exists
+    const existingUser = await User.findOne({ $or: [{ email }, { phoneNumber: formattedPhone }] });
+    if (existingUser) {
+      const field = existingUser.email === email.toLowerCase() ? 'email' : 'phone number';
+      return res.status(400).json({ status: 'error', message: `An account with this ${field} already exists` });
+    }
+
+    // Create User account
+    const user = new User({
+      name: name.trim(),
+      email,
+      password,
+      phoneNumber: formattedPhone,
+    });
+    await user.save();
+
+    // Generate store slug for sub-agent
+    let storeSlug = storeName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+    const slugExists = await SubAgent.findOne({ storeSlug });
+    if (slugExists) {
+      storeSlug += '-' + Date.now().toString(36);
+    }
+    // Also check main Store slugs
+    const mainSlugExists = await Store.findOne({ storeSlug });
+    if (mainSlugExists) {
+      storeSlug += '-sub-' + Date.now().toString(36);
+    }
+
+    // Generate referral code
+    const referralCode = storeName.substring(0, 3).toUpperCase().replace(/[^A-Z]/g, 'X') +
+      name.substring(0, 2).toUpperCase().replace(/[^A-Z]/g, 'X') +
+      Math.random().toString(36).substring(2, 6).toUpperCase();
+
+    // Update sub-agent record
+    subAgent.userId = user._id;
+    subAgent.storeName = storeName.trim();
+    subAgent.storeSlug = storeSlug;
+    subAgent.contactPhone = formattedPhone;
+    subAgent.referralCode = referralCode;
+    subAgent.status = 'registered';
+    await subAgent.save();
+
+    // Auto-populate products from parent store with parent's selling prices as base prices
+    const parentProducts = await StoreProduct.find({ storeId: subAgent.storeId._id, isActive: true });
+    if (parentProducts.length > 0) {
+      const subProducts = parentProducts.map(p => ({
+        subAgentId: subAgent._id,
+        network: p.network,
+        capacity: p.capacity,
+        basePrice: p.sellingPrice, // Parent's selling price = sub-agent's cost
+        sellingPrice: Math.round((p.sellingPrice * 1.1) * 100) / 100, // Default 10% markup
+        isActive: true,
+      }));
+      await SubAgentProduct.insertMany(subProducts);
+    }
+
+    // Generate JWT
+    const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, { expiresIn: '7d' });
+
+    res.status(201).json({
+      status: 'success',
+      message: 'Registration successful',
+      data: {
+        token,
+        user: {
+          id: user._id,
+          name: user.name,
+          email: user.email,
+          phoneNumber: user.phoneNumber,
+        },
+        subAgent: {
+          id: subAgent._id,
+          storeName: subAgent.storeName,
+          storeSlug: subAgent.storeSlug,
+          parentStoreName: subAgent.storeId?.storeName,
+        },
+      },
+    });
+  } catch (err) {
+    if (err.code === 11000) {
+      const field = Object.keys(err.keyPattern || {})[0];
+      const messages = {
+        email: 'An account with this email already exists',
+        phoneNumber: 'An account with this phone number already exists',
+        storeSlug: 'This store name is already taken. Please choose another.',
+        referralCode: 'Registration failed. Please try again.',
+        inviteCode: 'This invite has already been used.',
+      };
+      return res.status(400).json({ status: 'error', message: messages[field] || 'Registration failed. Please try again.' });
+    }
+    console.error('SubAgent register error:', err.message);
+    res.status(500).json({ status: 'error', message: 'Something went wrong. Please try again.' });
+  }
+});
+
+// POST /api/subagent/login — Sub-agent login
+router.post('/login', [
+  body('email').isEmail().normalizeEmail(),
+  body('password').notEmpty()
+], async (req, res) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ status: 'error', message: 'Valid email and password required' });
+    }
+
+    const { email, password } = req.body;
+    const user = await User.findOne({ email }).select('+password');
+    if (!user) {
+      return res.status(401).json({ status: 'error', message: 'Invalid email or password' });
+    }
+    if (!user.isActive) {
+      return res.status(403).json({ status: 'error', message: 'Your account has been deactivated.' });
+    }
+
+    const isMatch = await user.comparePassword(password);
+    if (!isMatch) {
+      return res.status(401).json({ status: 'error', message: 'Invalid email or password' });
+    }
+
+    // Verify they are a registered sub-agent
+    const subAgent = await SubAgent.findOne({ userId: user._id, status: 'registered' })
+      .populate('storeId', 'storeName storeSlug');
+    if (!subAgent) {
+      return res.status(403).json({ status: 'error', message: 'No sub-agent account found for this email' });
+    }
+
+    user.lastLogin = new Date();
+    await user.save();
+
+    const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, { expiresIn: '7d' });
+
+    res.json({
+      status: 'success',
+      data: {
+        token,
+        user: {
+          id: user._id,
+          name: user.name,
+          email: user.email,
+          phoneNumber: user.phoneNumber,
+        },
+        subAgent: {
+          id: subAgent._id,
+          storeName: subAgent.storeName,
+          storeSlug: subAgent.storeSlug,
+          parentStoreName: subAgent.storeId?.storeName,
+          totalEarnings: subAgent.totalEarnings,
+          totalSales: subAgent.totalSales,
+          pendingBalance: subAgent.pendingBalance,
+        },
+      },
+    });
+  } catch (err) {
+    console.error('SubAgent login error:', err.message);
+    res.status(500).json({ status: 'error', message: 'Login failed. Please try again.' });
+  }
+});
+
+// ─── SUB-AGENT AUTHENTICATED ROUTES ───
+
+// GET /api/subagent/my-dashboard — Sub-agent's dashboard
+router.get('/my-dashboard', subagentAuth, async (req, res) => {
+  try {
+    const sales = await DataPurchase.find({
+      'storeDetails.subAgentId': req.subAgent._id,
+    })
+      .sort({ createdAt: -1 })
+      .limit(50);
+
+    res.json({
+      status: 'success',
+      data: {
+        subAgent: {
+          id: req.subAgent._id,
+          storeName: req.subAgent.storeName,
+          storeSlug: req.subAgent.storeSlug,
+          totalEarnings: req.subAgent.totalEarnings,
+          totalSales: req.subAgent.totalSales,
+          pendingBalance: req.subAgent.pendingBalance,
+          parentStoreName: req.subAgent.storeId?.storeName,
+          isActive: req.subAgent.isActive,
+        },
+        sales,
+      },
+    });
+  } catch (err) {
+    console.error('SubAgent dashboard error:', err.message);
+    res.status(500).json({ status: 'error', message: 'Something went wrong. Please try again.' });
+  }
+});
+
+// GET /api/subagent/my-products — Sub-agent's products with pricing
+router.get('/my-products', subagentAuth, async (req, res) => {
+  try {
+    const products = await SubAgentProduct.find({ subAgentId: req.subAgent._id });
+    res.json({ status: 'success', data: products });
+  } catch (err) {
+    console.error('SubAgent products error:', err.message);
+    res.status(500).json({ status: 'error', message: 'Something went wrong. Please try again.' });
+  }
+});
+
+// PUT /api/subagent/my-products — Sub-agent updates their selling prices
+router.put('/my-products', subagentAuth, async (req, res) => {
+  try {
+    const { products } = req.body;
+    if (!Array.isArray(products)) {
+      return res.status(400).json({ status: 'error', message: 'Products must be an array' });
+    }
+
+    // Also refresh base prices from parent store's current selling prices
+    const parentProducts = await StoreProduct.find({ storeId: req.subAgent.storeId._id, isActive: true });
+    const parentPriceMap = {};
+    parentProducts.forEach(p => {
+      parentPriceMap[`${p.network}_${p.capacity}`] = p.sellingPrice;
+    });
+
+    const ops = products.map(p => {
+      const parentPrice = parentPriceMap[`${p.network}_${p.capacity}`];
+      const basePrice = parentPrice || p.basePrice;
+      const sellingPrice = Math.max(p.sellingPrice, basePrice); // Can't sell below cost
+
+      return {
+        updateOne: {
+          filter: { subAgentId: req.subAgent._id, network: p.network, capacity: p.capacity },
+          update: {
+            $set: {
+              basePrice,
+              sellingPrice,
+              isActive: p.isActive !== false,
+            },
+          },
+          upsert: true,
+        },
+      };
+    });
+
+    if (ops.length > 0) {
+      await SubAgentProduct.bulkWrite(ops);
+    }
+
+    const updated = await SubAgentProduct.find({ subAgentId: req.subAgent._id });
+    res.json({ status: 'success', data: updated });
+  } catch (err) {
+    console.error('SubAgent update products error:', err.message);
+    res.status(500).json({ status: 'error', message: 'Something went wrong. Please try again.' });
+  }
+});
+
+// PUT /api/subagent/my-store — Sub-agent updates their store details
+router.put('/my-store', subagentAuth, async (req, res) => {
+  try {
+    const { storeName, contactPhone, contactWhatsapp } = req.body;
+    if (storeName) req.subAgent.storeName = storeName;
+    if (contactPhone) req.subAgent.contactPhone = contactPhone;
+    if (contactWhatsapp !== undefined) req.subAgent.contactWhatsapp = contactWhatsapp;
+
+    await req.subAgent.save();
+    res.json({ status: 'success', data: req.subAgent });
+  } catch (err) {
+    console.error('SubAgent update store error:', err.message);
+    res.status(500).json({ status: 'error', message: 'Something went wrong. Please try again.' });
+  }
+});
+
+// ─── PARENT AGENT MANAGEMENT ROUTES (require auth) ───
+
+// GET /api/subagent/list — Parent lists their sub-agents
+router.get('/list', auth, async (req, res) => {
+  try {
+    const store = await Store.findOne({ agentId: req.user._id });
+    if (!store) {
+      return res.status(404).json({ status: 'error', message: 'Store not found' });
+    }
+
+    const subAgents = await SubAgent.find({ storeId: store._id })
+      .populate('userId', 'name email phoneNumber')
+      .sort({ createdAt: -1 });
+
+    res.json({ status: 'success', data: subAgents });
+  } catch (err) {
+    console.error('SubAgent list error:', err.message);
+    res.status(500).json({ status: 'error', message: 'Something went wrong. Please try again.' });
+  }
+});
+
+// PUT /api/subagent/:id — Parent updates sub-agent
+router.put('/:id', auth, async (req, res) => {
+  try {
+    const store = await Store.findOne({ agentId: req.user._id });
+    if (!store) {
+      return res.status(404).json({ status: 'error', message: 'Store not found' });
+    }
+
+    const subAgent = await SubAgent.findOne({ _id: req.params.id, storeId: store._id });
+    if (!subAgent) {
+      return res.status(404).json({ status: 'error', message: 'Subagent not found' });
+    }
+
+    const { commissionPercent, isActive } = req.body;
+    if (commissionPercent !== undefined) {
+      subAgent.commissionPercent = Math.min(90, Math.max(1, Number(commissionPercent)));
+    }
+    if (isActive !== undefined) {
+      subAgent.isActive = isActive;
+    }
+
+    await subAgent.save();
+    const populated = await SubAgent.findById(subAgent._id).populate('userId', 'name email phoneNumber');
+    res.json({ status: 'success', data: populated });
+  } catch (err) {
+    console.error('SubAgent update error:', err.message);
+    res.status(500).json({ status: 'error', message: 'Something went wrong. Please try again.' });
+  }
+});
+
+// DELETE /api/subagent/:id — Parent removes sub-agent
+router.delete('/:id', auth, async (req, res) => {
+  try {
+    const store = await Store.findOne({ agentId: req.user._id });
+    if (!store) {
+      return res.status(404).json({ status: 'error', message: 'Store not found' });
+    }
+
+    const subAgent = await SubAgent.findOneAndDelete({ _id: req.params.id, storeId: store._id });
+    if (!subAgent) {
+      return res.status(404).json({ status: 'error', message: 'Subagent not found' });
+    }
+
+    // Also remove their products
+    await SubAgentProduct.deleteMany({ subAgentId: subAgent._id });
+
+    res.json({ status: 'success', message: 'Subagent removed' });
+  } catch (err) {
+    console.error('SubAgent delete error:', err.message);
+    res.status(500).json({ status: 'error', message: 'Something went wrong. Please try again.' });
+  }
+});
+
+// GET /api/subagent/sales/:id — Parent views specific sub-agent's sales
+router.get('/sales/:id', auth, async (req, res) => {
+  try {
+    const store = await Store.findOne({ agentId: req.user._id });
+    if (!store) {
+      return res.status(404).json({ status: 'error', message: 'Store not found' });
+    }
+
+    const subAgent = await SubAgent.findOne({ _id: req.params.id, storeId: store._id });
+    if (!subAgent) {
+      return res.status(404).json({ status: 'error', message: 'Subagent not found' });
+    }
+
+    const sales = await DataPurchase.find({
+      'storeDetails.subAgentId': subAgent._id,
+    })
+      .sort({ createdAt: -1 })
+      .limit(100);
+
+    res.json({ status: 'success', data: sales });
+  } catch (err) {
+    console.error('SubAgent sales error:', err.message);
+    res.status(500).json({ status: 'error', message: 'Something went wrong. Please try again.' });
+  }
+});
+
+// Legacy: POST /api/subagent/invite — kept for backward compat
 router.post('/invite', auth, async (req, res) => {
   try {
     const store = await Store.findOne({ agentId: req.user._id });
@@ -49,6 +539,7 @@ router.post('/invite', auth, async (req, res) => {
       userId: user._id,
       referralCode: code,
       commissionPercent: commission,
+      status: 'registered',
     });
 
     const populated = await SubAgent.findById(subAgent._id).populate('userId', 'name email phoneNumber');
@@ -59,131 +550,6 @@ router.post('/invite', auth, async (req, res) => {
       return res.status(400).json({ status: 'error', message: 'This user is already a subagent' });
     }
     console.error('SubAgent invite error:', err.message);
-    res.status(500).json({ status: 'error', message: 'Something went wrong. Please try again.' });
-  }
-});
-
-// GET /api/subagent/list
-router.get('/list', auth, async (req, res) => {
-  try {
-    const store = await Store.findOne({ agentId: req.user._id });
-    if (!store) {
-      return res.status(404).json({ status: 'error', message: 'Store not found' });
-    }
-
-    const subAgents = await SubAgent.find({ storeId: store._id })
-      .populate('userId', 'name email phoneNumber')
-      .sort({ createdAt: -1 });
-
-    res.json({ status: 'success', data: subAgents });
-  } catch (err) {
-    console.error('SubAgent list error:', err.message);
-    res.status(500).json({ status: 'error', message: 'Something went wrong. Please try again.' });
-  }
-});
-
-// PUT /api/subagent/:id
-router.put('/:id', auth, async (req, res) => {
-  try {
-    const store = await Store.findOne({ agentId: req.user._id });
-    if (!store) {
-      return res.status(404).json({ status: 'error', message: 'Store not found' });
-    }
-
-    const subAgent = await SubAgent.findOne({ _id: req.params.id, storeId: store._id });
-    if (!subAgent) {
-      return res.status(404).json({ status: 'error', message: 'Subagent not found' });
-    }
-
-    const { commissionPercent, isActive } = req.body;
-    if (commissionPercent !== undefined) {
-      subAgent.commissionPercent = Math.min(90, Math.max(1, Number(commissionPercent)));
-    }
-    if (isActive !== undefined) {
-      subAgent.isActive = isActive;
-    }
-
-    await subAgent.save();
-    const populated = await SubAgent.findById(subAgent._id).populate('userId', 'name email phoneNumber');
-    res.json({ status: 'success', data: populated });
-  } catch (err) {
-    console.error('SubAgent update error:', err.message);
-    res.status(500).json({ status: 'error', message: 'Something went wrong. Please try again.' });
-  }
-});
-
-// DELETE /api/subagent/:id
-router.delete('/:id', auth, async (req, res) => {
-  try {
-    const store = await Store.findOne({ agentId: req.user._id });
-    if (!store) {
-      return res.status(404).json({ status: 'error', message: 'Store not found' });
-    }
-
-    const subAgent = await SubAgent.findOneAndDelete({ _id: req.params.id, storeId: store._id });
-    if (!subAgent) {
-      return res.status(404).json({ status: 'error', message: 'Subagent not found' });
-    }
-
-    res.json({ status: 'success', message: 'Subagent removed' });
-  } catch (err) {
-    console.error('SubAgent delete error:', err.message);
-    res.status(500).json({ status: 'error', message: 'Something went wrong. Please try again.' });
-  }
-});
-
-// GET /api/subagent/my-dashboard
-router.get('/my-dashboard', auth, async (req, res) => {
-  try {
-    const subAgent = await SubAgent.findOne({ userId: req.user._id, isActive: true })
-      .populate('storeId', 'storeName storeSlug');
-    if (!subAgent) {
-      return res.status(404).json({ status: 'error', message: 'You are not a subagent of any store' });
-    }
-
-    const sales = await DataPurchase.find({
-      'storeDetails.storeId': subAgent.storeId._id,
-      'storeDetails.subAgentId': subAgent._id,
-    })
-      .sort({ createdAt: -1 })
-      .limit(50);
-
-    res.json({
-      status: 'success',
-      data: {
-        subAgent,
-        sales,
-      },
-    });
-  } catch (err) {
-    console.error('SubAgent dashboard error:', err.message);
-    res.status(500).json({ status: 'error', message: 'Something went wrong. Please try again.' });
-  }
-});
-
-// GET /api/subagent/sales/:id
-router.get('/sales/:id', auth, async (req, res) => {
-  try {
-    const store = await Store.findOne({ agentId: req.user._id });
-    if (!store) {
-      return res.status(404).json({ status: 'error', message: 'Store not found' });
-    }
-
-    const subAgent = await SubAgent.findOne({ _id: req.params.id, storeId: store._id });
-    if (!subAgent) {
-      return res.status(404).json({ status: 'error', message: 'Subagent not found' });
-    }
-
-    const sales = await DataPurchase.find({
-      'storeDetails.storeId': store._id,
-      'storeDetails.subAgentId': subAgent._id,
-    })
-      .sort({ createdAt: -1 })
-      .limit(100);
-
-    res.json({ status: 'success', data: sales });
-  } catch (err) {
-    console.error('SubAgent sales error:', err.message);
     res.status(500).json({ status: 'error', message: 'Something went wrong. Please try again.' });
   }
 });
