@@ -67,9 +67,8 @@ const SubAgentSchema = new mongoose.Schema({
   autoIndex: false
 });
 
-SubAgentSchema.index({ referralCode: 1 });
-SubAgentSchema.index({ inviteCode: 1 });
-SubAgentSchema.index({ storeSlug: 1 });
+// referralCode, inviteCode, storeSlug indexes are created by schema-level unique+sparse
+// Only add indexes not already defined on fields
 SubAgentSchema.index({ parentAgentId: 1 });
 
 const SubAgent = mongoose.model('SubAgent', SubAgentSchema);
