@@ -120,12 +120,6 @@ export default function SubAgentRegisterPage({ params }) {
 
   return (
     <div className="min-h-screen bg-gray-950 flex flex-col">
-      <div className="p-4 sm:p-6">
-        <Link href="/" className="text-xl font-extrabold text-white">
-          Flash<span className="text-amber-500">Data</span>
-        </Link>
-      </div>
-
       <div className="flex-1 flex items-center justify-center px-4 py-8">
         <div className="w-full max-w-[460px]">
           {/* Invite info banner */}
