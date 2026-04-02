@@ -74,18 +74,27 @@ SubAgentSchema.index({ parentAgentId: 1 });
 
 const SubAgent = mongoose.model('SubAgent', SubAgentSchema);
 
-// Fix indexes: drop old problematic compound index and sync
+// Fix indexes: drop ALL old indexes and recreate from schema
 mongoose.connection.on('connected', async () => {
   try {
-    // Drop old compound unique index that blocks pending invites
-    try {
-      await SubAgent.collection.dropIndex('storeId_1_userId_1');
-      console.log('Dropped old storeId_1_userId_1 index');
-    } catch (e) {
-      // Already dropped or doesn't exist
+    // Drop all old conflicting indexes one by one
+    const toDrop = [
+      'storeId_1_userId_1',
+      'referralCode_1',
+      'inviteCode_1',
+      'storeSlug_1',
+    ];
+    for (const name of toDrop) {
+      try {
+        await SubAgent.collection.dropIndex(name);
+        console.log(`Dropped old SubAgent index: ${name}`);
+      } catch (e) {
+        // Doesn't exist — fine
+      }
     }
-    // Ensure current schema indexes exist
-    await SubAgent.ensureIndexes();
+    // Now recreate indexes from schema
+    await SubAgent.createIndexes();
+    console.log('SubAgent indexes synced successfully');
   } catch (e) {
     console.error('SubAgent index sync error:', e.message);
   }
