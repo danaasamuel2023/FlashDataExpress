@@ -64,10 +64,29 @@ router.post('/generate-invite', auth, async (req, res) => {
       },
     });
   } catch (err) {
+    console.error('SubAgent generate-invite error:', err.code, err.message, JSON.stringify(err.keyPattern));
     if (err.code === 11000) {
-      return res.status(400).json({ status: 'error', message: 'Failed to generate invite. Please try again.' });
+      // Retry once with a different code in case of collision
+      try {
+        const retryCode = store.storeName.substring(0, 3).toUpperCase().replace(/[^A-Z]/g, 'X') +
+          'INV' +
+          Math.random().toString(36).substring(2, 8).toUpperCase();
+        const subAgent = await SubAgent.create({
+          storeId: store._id,
+          parentAgentId: req.user._id,
+          inviteCode: retryCode,
+          status: 'pending',
+        });
+        const inviteLink = `${process.env.FRONTEND_URL || 'http://localhost:3000'}/subagent/register/${retryCode}`;
+        return res.status(201).json({
+          status: 'success',
+          data: { inviteCode: retryCode, inviteLink, subAgentId: subAgent._id },
+        });
+      } catch (retryErr) {
+        console.error('SubAgent generate-invite retry error:', retryErr.code, retryErr.message, JSON.stringify(retryErr.keyPattern));
+        return res.status(400).json({ status: 'error', message: 'Failed to generate invite. The old database index may need to be removed. Check server logs.' });
+      }
     }
-    console.error('SubAgent generate-invite error:', err.message);
     res.status(500).json({ status: 'error', message: 'Something went wrong. Please try again.' });
   }
 });

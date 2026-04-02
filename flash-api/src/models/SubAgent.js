@@ -44,7 +44,6 @@ const SubAgentSchema = new mongoose.Schema({
   },
   contactPhone: String,
   contactWhatsapp: String,
-  // Legacy commission field (kept for backward compat with old sub-agents)
   commissionPercent: {
     type: Number,
     default: 30,
@@ -58,21 +57,16 @@ const SubAgentSchema = new mongoose.Schema({
     type: Boolean,
     default: true
   },
-  // 'pending' = invite generated but not yet registered, 'registered' = sub-agent has registered
   status: {
     type: String,
     enum: ['pending', 'registered'],
     default: 'pending'
   }
 }, {
-  timestamps: true
+  timestamps: true,
+  autoIndex: false
 });
 
-// Only enforce one sub-agent per store+user when userId is set (not for pending invites)
-SubAgentSchema.index(
-  { storeId: 1, userId: 1 },
-  { unique: true, partialFilterExpression: { userId: { $type: 'objectId' } } }
-);
 SubAgentSchema.index({ referralCode: 1 });
 SubAgentSchema.index({ inviteCode: 1 });
 SubAgentSchema.index({ storeSlug: 1 });
@@ -80,9 +74,21 @@ SubAgentSchema.index({ parentAgentId: 1 });
 
 const SubAgent = mongoose.model('SubAgent', SubAgentSchema);
 
-// Drop the old problematic index if it exists (one-time migration)
-SubAgent.collection.dropIndex('storeId_1_userId_1').catch(() => {
-  // Index may not exist or already dropped — ignore
+// Fix indexes: drop old problematic compound index and sync
+mongoose.connection.on('connected', async () => {
+  try {
+    // Drop old compound unique index that blocks pending invites
+    try {
+      await SubAgent.collection.dropIndex('storeId_1_userId_1');
+      console.log('Dropped old storeId_1_userId_1 index');
+    } catch (e) {
+      // Already dropped or doesn't exist
+    }
+    // Ensure current schema indexes exist
+    await SubAgent.ensureIndexes();
+  } catch (e) {
+    console.error('SubAgent index sync error:', e.message);
+  }
 });
 
 module.exports = SubAgent;
