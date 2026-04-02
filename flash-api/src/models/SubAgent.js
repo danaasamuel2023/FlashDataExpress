@@ -68,10 +68,21 @@ const SubAgentSchema = new mongoose.Schema({
   timestamps: true
 });
 
-SubAgentSchema.index({ storeId: 1, userId: 1 }, { unique: true, sparse: true });
+// Only enforce one sub-agent per store+user when userId is set (not for pending invites)
+SubAgentSchema.index(
+  { storeId: 1, userId: 1 },
+  { unique: true, partialFilterExpression: { userId: { $type: 'objectId' } } }
+);
 SubAgentSchema.index({ referralCode: 1 });
 SubAgentSchema.index({ inviteCode: 1 });
 SubAgentSchema.index({ storeSlug: 1 });
 SubAgentSchema.index({ parentAgentId: 1 });
 
-module.exports = mongoose.model('SubAgent', SubAgentSchema);
+const SubAgent = mongoose.model('SubAgent', SubAgentSchema);
+
+// Drop the old problematic index if it exists (one-time migration)
+SubAgent.collection.dropIndex('storeId_1_userId_1').catch(() => {
+  // Index may not exist or already dropped — ignore
+});
+
+module.exports = SubAgent;
