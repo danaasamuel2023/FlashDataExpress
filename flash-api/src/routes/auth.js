@@ -3,6 +3,7 @@ const router = express.Router();
 const jwt = require('jsonwebtoken');
 const { body, validationResult } = require('express-validator');
 const User = require('../models/User');
+const SubAgent = require('../models/SubAgent');
 const { Referral } = require('../models/Referral');
 const auth = require('../middleware/auth');
 const { formatPhone } = require('../utils/helpers');
@@ -130,6 +131,12 @@ router.post('/login', [
     const isMatch = await user.comparePassword(password);
     if (!isMatch) {
       return res.status(401).json({ status: 'error', message: 'Invalid email or password' });
+    }
+
+    // Block sub-agents from logging into the main portal
+    const subAgentRecord = await SubAgent.findOne({ userId: user._id, status: 'registered' });
+    if (subAgentRecord) {
+      return res.status(403).json({ status: 'error', message: 'This account is registered as a sub-agent. Please log in through the sub-agent portal.' });
     }
 
     user.lastLogin = new Date();
