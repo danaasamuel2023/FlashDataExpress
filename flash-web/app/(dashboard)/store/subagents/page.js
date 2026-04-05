@@ -1,6 +1,6 @@
 'use client';
 import { useState, useEffect } from 'react';
-import { Users, Link2, Loader2, Trash2, Copy, Check, ToggleLeft, ToggleRight, ExternalLink, Clock } from 'lucide-react';
+import { Users, Link2, Loader2, Trash2, Copy, Check, ExternalLink, Clock } from 'lucide-react';
 import toast from 'react-hot-toast';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
@@ -49,15 +49,6 @@ export default function SubAgentsPage() {
     }
   };
 
-  const handleToggle = async (id, isActive) => {
-    try {
-      const res = await api.put(`/subagent/${id}`, { isActive: !isActive });
-      setSubAgents(prev => prev.map(s => s._id === id ? res.data.data : s));
-      toast.success(isActive ? 'Subagent deactivated' : 'Subagent activated');
-    } catch {
-      toast.error('Failed to update');
-    }
-  };
 
   const handleDelete = async (id) => {
     if (!confirm('Remove this subagent? This cannot be undone.')) return;
@@ -258,13 +249,6 @@ export default function SubAgentsPage() {
                         {copiedId === sub.storeSlug ? <Check className="w-4 h-4 text-success" /> : <ExternalLink className="w-4 h-4" />}
                       </button>
                     )}
-                    <button
-                      onClick={() => handleToggle(sub._id, sub.isActive)}
-                      className="p-2 rounded-lg hover:bg-white/5 text-text-muted hover:text-primary transition-colors"
-                      title={sub.isActive ? 'Deactivate' : 'Activate'}
-                    >
-                      {sub.isActive ? <ToggleRight className="w-4 h-4 text-success" /> : <ToggleLeft className="w-4 h-4" />}
-                    </button>
                     <button
                       onClick={() => handleDelete(sub._id)}
                       className="p-2 rounded-lg hover:bg-white/5 text-text-muted hover:text-error transition-colors"

@@ -190,6 +190,8 @@ router.get('/pricing', async (req, res) => {
       data: {
         basePrices: settings?.pricing?.basePrices || {},
         sellingPrices: settings?.pricing?.sellingPrices || {},
+        agentPrices: settings?.pricing?.agentPrices || {},
+        subAgentPrices: settings?.pricing?.subAgentPrices || {},
       },
     });
   } catch (err) {
@@ -201,10 +203,12 @@ router.get('/pricing', async (req, res) => {
 // PUT /api/admin/pricing
 router.put('/pricing', async (req, res) => {
   try {
-    const { sellingPrices, basePrices } = req.body;
+    const { sellingPrices, basePrices, agentPrices, subAgentPrices } = req.body;
     const updates = {};
     if (sellingPrices) updates['pricing.sellingPrices'] = sellingPrices;
     if (basePrices) updates['pricing.basePrices'] = basePrices;
+    if (agentPrices) updates['pricing.agentPrices'] = agentPrices;
+    if (subAgentPrices) updates['pricing.subAgentPrices'] = subAgentPrices;
     await Settings.findOneAndUpdate(
       { _id: 'app_settings' },
       { $set: updates },
@@ -232,25 +236,37 @@ router.post('/pricing/sync', async (req, res) => {
     // Default markup: 5% on top of base price, rounded to 2 decimal places
     const settings = await Settings.getSettings();
     const existingSellingPrices = settings.pricing && settings.pricing.sellingPrices || {};
+    const existingAgentPrices = settings.pricing && settings.pricing.agentPrices || {};
+    const existingSubAgentPrices = settings.pricing && settings.pricing.subAgentPrices || {};
     const sellingPrices = JSON.parse(JSON.stringify(existingSellingPrices));
+    const agentPrices = JSON.parse(JSON.stringify(existingAgentPrices));
+    const subAgentPrices = JSON.parse(JSON.stringify(existingSubAgentPrices));
 
     for (const network of Object.keys(basePrices)) {
       if (!sellingPrices[network]) sellingPrices[network] = {};
+      if (!agentPrices[network]) agentPrices[network] = {};
+      if (!subAgentPrices[network]) subAgentPrices[network] = {};
       for (const [capacity, basePrice] of Object.entries(basePrices[network])) {
-        // Only set if selling price doesn't already exist for this bundle
+        // Only set if price doesn't already exist for this bundle
         if (!sellingPrices[network][capacity]) {
           sellingPrices[network][capacity] = Math.round(basePrice * 1.05 * 100) / 100;
+        }
+        if (!agentPrices[network][capacity]) {
+          agentPrices[network][capacity] = Math.round(basePrice * 1.03 * 100) / 100;
+        }
+        if (!subAgentPrices[network][capacity]) {
+          subAgentPrices[network][capacity] = Math.round(basePrice * 1.04 * 100) / 100;
         }
       }
     }
 
     await Settings.findOneAndUpdate(
       { _id: 'app_settings' },
-      { $set: { 'pricing.basePrices': basePrices, 'pricing.sellingPrices': sellingPrices, 'datamart.isConnected': true, 'pricing.lastFetchedAt': new Date() } },
+      { $set: { 'pricing.basePrices': basePrices, 'pricing.sellingPrices': sellingPrices, 'pricing.agentPrices': agentPrices, 'pricing.subAgentPrices': subAgentPrices, 'datamart.isConnected': true, 'pricing.lastFetchedAt': new Date() } },
       { upsert: true }
     );
 
-    res.json({ status: 'success', message: `Synced ${packages.length} packages`, data: { basePrices, sellingPrices } });
+    res.json({ status: 'success', message: `Synced ${packages.length} packages`, data: { basePrices, sellingPrices, agentPrices, subAgentPrices } });
   } catch (err) {
     console.error('Admin error:', err.message);
     res.status(500).json({ status: 'error', message: 'Something went wrong. Please try again.' });
