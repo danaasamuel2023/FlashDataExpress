@@ -123,24 +123,29 @@ export default function SubAgentRegisterPage({ params }) {
     <div className="min-h-screen bg-gray-950 flex flex-col">
       <div className="flex-1 flex items-center justify-center px-4 py-8">
         <div className="w-full max-w-[460px]">
-          {/* Invite info banner */}
+          {/* Parent Agent banner */}
           <div className="bg-amber-500/10 border border-amber-500/20 rounded-xl p-4 mb-6">
             <div className="flex items-center gap-3">
-              <CheckCircle className="w-5 h-5 text-amber-400 shrink-0" />
+              <div className="w-10 h-10 bg-amber-500/20 rounded-full flex items-center justify-center shrink-0">
+                <User className="w-5 h-5 text-amber-400" />
+              </div>
               <div>
+                <p className="text-white font-bold text-base">
+                  {inviteInfo?.parentAgentName}
+                </p>
                 <p className="text-amber-400 font-semibold text-sm">
-                  You&apos;ve been invited by {inviteInfo?.parentAgentName}
+                  {inviteInfo?.storeName}
                 </p>
                 <p className="text-amber-400/70 text-xs mt-0.5">
-                  Join as a sub-agent of <strong>{inviteInfo?.storeName}</strong> and start selling data bundles
+                  Has invited you to join as an agent and start selling data bundles
                 </p>
               </div>
             </div>
           </div>
 
           <div className="bg-gray-900 border border-gray-800 rounded-2xl p-6 sm:p-8">
-            <h1 className="text-2xl font-extrabold text-white tracking-tight">Create your sub-agent account</h1>
-            <p className="text-gray-400 text-sm mt-1.5 mb-6">Set up your store and start selling instantly.</p>
+            <h1 className="text-2xl font-extrabold text-white tracking-tight">Create your Agent Store</h1>
+            <p className="text-gray-400 text-sm mt-1.5 mb-6">Set up your Agent Store under <span className="text-amber-400 font-semibold">{inviteInfo?.parentAgentName}</span> and start selling instantly.</p>
 
             <form onSubmit={handleSubmit} className="space-y-4">
               <Input
