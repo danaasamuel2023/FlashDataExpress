@@ -53,6 +53,7 @@ export default function SubAgentDashboardPage() {
     localStorage.removeItem('ds_token');
     localStorage.removeItem('ds_user');
     localStorage.removeItem('ds_subagent');
+    localStorage.removeItem('ds_is_subagent');
     router.push('/subagent/login');
   };
 

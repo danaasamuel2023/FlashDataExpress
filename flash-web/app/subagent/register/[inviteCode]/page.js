@@ -74,6 +74,7 @@ export default function SubAgentRegisterPage({ params }) {
       localStorage.setItem('ds_token', token);
       localStorage.setItem('ds_subagent', JSON.stringify(subAgent));
       localStorage.setItem('ds_user', JSON.stringify(user));
+      localStorage.setItem('ds_is_subagent', 'true');
 
       toast.success('Registration successful! Welcome aboard!');
       router.push('/subagent/dashboard');

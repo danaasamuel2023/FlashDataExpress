@@ -86,12 +86,30 @@ export default function WalletPage() {
                 </button>
               ))}
             </div>
+            {amount && parseFloat(amount) >= 1 && (
+              <div className="bg-surface-light rounded-xl p-3 space-y-1">
+                <div className="flex justify-between text-sm">
+                  <span className="text-text-muted">Deposit amount</span>
+                  <span className="text-white font-medium">GH₵{parseFloat(amount).toFixed(2)}</span>
+                </div>
+                <div className="flex justify-between text-sm">
+                  <span className="text-text-muted">Processing fee (3%)</span>
+                  <span className="text-white font-medium">GH₵{(parseFloat(amount) * 0.03).toFixed(2)}</span>
+                </div>
+                <div className="border-t border-white/10 pt-1 flex justify-between text-sm">
+                  <span className="text-text-muted font-semibold">Total charge</span>
+                  <span className="text-primary font-bold">GH₵{(parseFloat(amount) * 1.03).toFixed(2)}</span>
+                </div>
+              </div>
+            )}
             <Button fullWidth size="lg" loading={depositing} onClick={handleDeposit}>
               <Wallet className="w-4 h-4" />
-              Pay with Paystack
+              {amount && parseFloat(amount) >= 1
+                ? `Pay GH₵${(parseFloat(amount) * 1.03).toFixed(2)}`
+                : 'Pay with Paystack'}
             </Button>
             <p className="text-xs text-text-muted text-center">
-              You&apos;ll be redirected to Paystack to complete your payment securely.
+              A 3% processing fee applies. You&apos;ll be redirected to Paystack to complete your payment.
             </p>
           </div>
         </Card>

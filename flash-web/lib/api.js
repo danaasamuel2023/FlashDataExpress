@@ -25,9 +25,16 @@ api.interceptors.response.use(
   (error) => {
     if (error.response?.status === 401) {
       if (typeof window !== 'undefined') {
+        const isSubAgent = localStorage.getItem('ds_is_subagent') === 'true';
         localStorage.removeItem('ds_token');
         localStorage.removeItem('ds_user');
-        window.location.href = '/sign-in';
+        if (isSubAgent) {
+          localStorage.removeItem('ds_subagent');
+          localStorage.removeItem('ds_is_subagent');
+          window.location.href = '/subagent/login';
+        } else {
+          window.location.href = '/sign-in';
+        }
       }
     }
     return Promise.reject(error);

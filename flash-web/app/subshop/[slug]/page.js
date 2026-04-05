@@ -398,10 +398,10 @@ export default function SubAgentShopPage({ params }) {
           </div>
         )}
 
-        {/* CTA */}
+        {/* Footer */}
         <div className="text-center py-6">
           <p className="text-xs text-gray-400 dark:text-gray-500">
-            Powered by <span className="font-bold">FlashData</span>
+            Powered by <span className="font-bold">Agent Starter</span>
           </p>
         </div>
       </div>
