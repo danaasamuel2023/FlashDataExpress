@@ -183,16 +183,16 @@ export default function SubAgentRegisterPage({ params }) {
                 error={errors.password}
               />
               <Input
-                label="Your store name"
+                label="Your Agent Store name"
                 name="storeName"
                 icon={Store}
-                placeholder="e.g. Kofi Data Hub"
+                placeholder="e.g. Kofi Agent Store"
                 value={form.storeName}
                 onChange={handleChange}
                 error={errors.storeName}
               />
               <p className="text-xs text-gray-500">
-                This will be the name customers see on your store page.
+                This will be the name customers see on your Agent Store page.
               </p>
 
               <Button type="submit" fullWidth size="lg" loading={loading} className="mt-2">
