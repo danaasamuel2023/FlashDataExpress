@@ -1,7 +1,6 @@
 'use client';
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import Link from 'next/link';
 import { Mail, Lock } from 'lucide-react';
 import toast from 'react-hot-toast';
 import Button from '@/components/ui/Button';
@@ -40,6 +39,7 @@ export default function SubAgentLoginPage() {
       localStorage.setItem('ds_token', token);
       localStorage.setItem('ds_user', JSON.stringify(user));
       localStorage.setItem('ds_subagent', JSON.stringify(subAgent));
+      localStorage.setItem('ds_is_subagent', 'true');
 
       toast.success('Welcome back!');
       router.push('/subagent/dashboard');
@@ -54,9 +54,9 @@ export default function SubAgentLoginPage() {
   return (
     <div className="min-h-screen bg-gray-950 flex flex-col">
       <div className="p-4 sm:p-6">
-        <Link href="/" className="text-xl font-extrabold text-white">
-          Flash<span className="text-amber-500">Data</span>
-        </Link>
+        <span className="text-xl font-extrabold text-white">
+          Agent<span className="text-amber-500">Starter</span>
+        </span>
       </div>
 
       <div className="flex-1 flex items-center justify-center px-4 py-8">

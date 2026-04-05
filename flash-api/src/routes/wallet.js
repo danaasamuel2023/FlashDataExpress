@@ -44,7 +44,11 @@ router.post('/deposit', auth, async (req, res) => {
     const reference = generateReference('DEP');
     const user = await User.findById(req.user._id);
 
-    // Create pending transaction
+    // 3% processing fee
+    const fee = Math.round(value * 0.03 * 100) / 100;
+    const chargeAmount = Math.round((value + fee) * 100) / 100;
+
+    // Create pending transaction (amount = what gets credited to wallet)
     await Transaction.create({
       userId: user._id,
       type: 'deposit',
@@ -54,14 +58,14 @@ router.post('/deposit', auth, async (req, res) => {
       status: 'pending',
       reference,
       gateway: 'paystack',
-      description: `Wallet deposit of GH₵${value.toFixed(2)}`,
+      description: `Wallet deposit of GH₵${value.toFixed(2)} (fee: GH₵${fee.toFixed(2)})`,
     });
 
     const callbackUrl = `${process.env.FRONTEND_URL || 'http://localhost:3000'}/payment/callback`;
 
     const paystack = await paystackService.initializeTransaction({
       email: user.email,
-      amount: value,
+      amount: chargeAmount,
       reference,
       callback_url: callbackUrl,
       metadata: { userId: user._id.toString(), type: 'deposit' },
