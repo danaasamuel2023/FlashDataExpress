@@ -45,7 +45,7 @@ export default function SubAgentDashboardPage() {
     const link = `${window.location.origin}/subshop/${dashboard.subAgent.storeSlug}`;
     navigator.clipboard.writeText(link);
     setCopied(true);
-    toast.success('Store link copied!');
+    toast.success('Agent Store link copied!');
     setTimeout(() => setCopied(false), 2000);
   };
 
@@ -84,7 +84,7 @@ export default function SubAgentDashboardPage() {
               className="flex items-center gap-2 px-3 py-2 bg-amber-500/10 text-amber-400 rounded-lg text-sm font-medium hover:bg-amber-500/20 transition-colors"
             >
               {copied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
-              {copied ? 'Copied!' : 'Store Link'}
+              {copied ? 'Copied!' : 'Agent Store'}
             </button>
             <button
               onClick={handleLogout}
@@ -140,7 +140,7 @@ export default function SubAgentDashboardPage() {
               </div>
               <div>
                 <p className="text-sm font-bold text-white truncate">{subAgent.storeSlug}</p>
-                <p className="text-xs text-gray-500">Your Store</p>
+                <p className="text-xs text-gray-500">Agent Store</p>
               </div>
             </div>
           </div>
@@ -163,7 +163,7 @@ export default function SubAgentDashboardPage() {
             className="bg-gray-900 border border-gray-800 rounded-xl p-4 hover:border-amber-500/30 transition-colors group"
           >
             <ExternalLink className="w-6 h-6 text-amber-400 mb-2" />
-            <p className="font-bold text-white text-sm">View Store</p>
+            <p className="font-bold text-white text-sm">View Agent Store</p>
             <p className="text-xs text-gray-500 mt-1">See what customers see</p>
           </a>
         </div>
@@ -174,7 +174,7 @@ export default function SubAgentDashboardPage() {
           {sales.length === 0 ? (
             <div className="bg-gray-900 border border-gray-800 rounded-xl p-8 text-center">
               <ShoppingBag className="w-10 h-10 text-gray-700 mx-auto mb-3" />
-              <p className="text-gray-500 text-sm">No sales yet. Share your store link to start selling!</p>
+              <p className="text-gray-500 text-sm">No sales yet. Share your Agent Store link to start selling!</p>
             </div>
           ) : (
             <div className="space-y-2">
