@@ -15,7 +15,7 @@ const navItems = [
   { href: '/orders', label: 'My Orders', icon: Package },
   { href: '/transactions', label: 'Transactions', icon: Clock },
   { href: '/wallet', label: 'Wallet', icon: Wallet },
-  { href: '/store/dashboard', label: 'My Store', icon: Store },
+  { href: '/store/dashboard', label: 'Agent Store', icon: Store },
   { href: '/referrals', label: 'Referrals', icon: Gift },
   { href: '/profile', label: 'Profile', icon: UserCircle },
 ];
