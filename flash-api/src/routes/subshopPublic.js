@@ -162,8 +162,11 @@ router.get('/:slug/verify-payment', async (req, res) => {
     // Calculate profits
     // Platform cost (what the parent agent pays to the platform)
     const storeSettings = await Settings.getSettings();
+    const platformSubAgentPrices = storeSettings?.pricing?.subAgentPrices || {};
     const platformSellingPrices = storeSettings?.pricing?.sellingPrices || {};
-    const platformCost = (platformSellingPrices[meta.network] || {})[String(meta.capacity)] || 0;
+    // Use sub-agent-specific prices if set, otherwise fall back to regular selling prices
+    const platformCost = (platformSubAgentPrices[meta.network] || {})[String(meta.capacity)]
+      || (platformSellingPrices[meta.network] || {})[String(meta.capacity)] || 0;
 
     // Sub-agent's selling price to customer
     const customerPrice = meta.sellingPrice;

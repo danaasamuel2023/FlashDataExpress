@@ -139,9 +139,13 @@ router.get('/:slug/verify-payment', async (req, res) => {
       isActive: true,
     });
     const storeSettings = await Settings.getSettings();
+    const platformAgentPrices = storeSettings?.pricing?.agentPrices || {};
     const platformSellingPrices = storeSettings?.pricing?.sellingPrices || {};
     const verifiedSellingPrice = verifyProduct?.sellingPrice || meta.sellingPrice;
-    const verifiedBasePrice = (platformSellingPrices[meta.network] || {})[String(meta.capacity)] || verifyProduct?.basePrice || 0;
+    // Use agent-specific prices if set, otherwise fall back to regular selling prices
+    const verifiedBasePrice = (platformAgentPrices[meta.network] || {})[String(meta.capacity)]
+      || (platformSellingPrices[meta.network] || {})[String(meta.capacity)]
+      || verifyProduct?.basePrice || 0;
     let agentProfit = verifiedSellingPrice - verifiedBasePrice;
 
     let subAgentProfit = 0;

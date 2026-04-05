@@ -26,6 +26,8 @@ const SettingsSchema = new mongoose.Schema({
   pricing: {
     basePrices: { type: mongoose.Schema.Types.Mixed, default: {} },
     sellingPrices: { type: mongoose.Schema.Types.Mixed, default: {} },
+    agentPrices: { type: mongoose.Schema.Types.Mixed, default: {} },
+    subAgentPrices: { type: mongoose.Schema.Types.Mixed, default: {} },
     lastFetchedAt: Date
   },
   referral: {

@@ -1,6 +1,6 @@
 'use client';
 import { useState, useEffect } from 'react';
-import { DollarSign, RefreshCw, Save, Loader2, Plus, Trash2 } from 'lucide-react';
+import { DollarSign, RefreshCw, Save, Loader2, Plus, Trash2, Users, UserCheck } from 'lucide-react';
 import toast from 'react-hot-toast';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
@@ -14,13 +14,20 @@ const NETWORKS = [
   { id: 'AT_PREMIUM', label: 'AirtelTigo' },
 ];
 
+const PRICE_TIERS = [
+  { id: 'sellingPrices', label: 'User Prices', description: 'Prices for regular users' },
+  { id: 'agentPrices', label: 'Agent Prices', description: 'Platform cost for parent agents' },
+  { id: 'subAgentPrices', label: 'Sub-Agent Prices', description: 'Platform cost for sub-agent sales' },
+];
+
 export default function AdminPricingPage() {
-  const [pricing, setPricing] = useState({ basePrices: {}, sellingPrices: {} });
+  const [pricing, setPricing] = useState({ basePrices: {}, sellingPrices: {}, agentPrices: {}, subAgentPrices: {} });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [syncingGhust, setSyncingGhust] = useState(false);
   const [selectedNetwork, setSelectedNetwork] = useState('YELLO');
+  const [selectedTier, setSelectedTier] = useState('sellingPrices');
   const [newCapacity, setNewCapacity] = useState('');
   const [newCostPrice, setNewCostPrice] = useState('');
   const [newSellingPrice, setNewSellingPrice] = useState('');
@@ -32,7 +39,7 @@ export default function AdminPricingPage() {
   const fetchPricing = async () => {
     try {
       const res = await api.get('/admin/pricing');
-      setPricing(res.data.data || { basePrices: {}, sellingPrices: {} });
+      setPricing(res.data.data || { basePrices: {}, sellingPrices: {}, agentPrices: {}, subAgentPrices: {} });
     } catch {
       toast.error('Failed to load pricing');
     } finally {
@@ -66,13 +73,13 @@ export default function AdminPricingPage() {
     }
   };
 
-  const handlePriceChange = (network, capacity, value) => {
+  const handleTierPriceChange = (tier, network, capacity, value) => {
     setPricing(prev => ({
       ...prev,
-      sellingPrices: {
-        ...prev.sellingPrices,
+      [tier]: {
+        ...prev[tier],
         [network]: {
-          ...prev.sellingPrices[network],
+          ...(prev[tier]?.[network] || {}),
           [capacity]: parseFloat(value) || 0,
         },
       },
@@ -82,7 +89,12 @@ export default function AdminPricingPage() {
   const handleSave = async () => {
     setSaving(true);
     try {
-      await api.put('/admin/pricing', { sellingPrices: pricing.sellingPrices, basePrices: pricing.basePrices });
+      await api.put('/admin/pricing', {
+        sellingPrices: pricing.sellingPrices,
+        basePrices: pricing.basePrices,
+        agentPrices: pricing.agentPrices,
+        subAgentPrices: pricing.subAgentPrices,
+      });
       toast.success('Pricing saved!');
     } catch (err) {
       toast.error(err.response?.data?.message || 'Save failed');
@@ -117,7 +129,21 @@ export default function AdminPricingPage() {
       sellingPrices: {
         ...prev.sellingPrices,
         [selectedNetwork]: {
-          ...prev.sellingPrices[selectedNetwork],
+          ...(prev.sellingPrices[selectedNetwork] || {}),
+          [cap]: parseFloat(newSellingPrice) || 0,
+        },
+      },
+      agentPrices: {
+        ...prev.agentPrices,
+        [selectedNetwork]: {
+          ...(prev.agentPrices?.[selectedNetwork] || {}),
+          [cap]: parseFloat(newSellingPrice) || 0,
+        },
+      },
+      subAgentPrices: {
+        ...prev.subAgentPrices,
+        [selectedNetwork]: {
+          ...(prev.subAgentPrices?.[selectedNetwork] || {}),
           [cap]: parseFloat(newSellingPrice) || 0,
         },
       },
@@ -131,27 +157,33 @@ export default function AdminPricingPage() {
   const handleDeleteBundle = (capacity) => {
     setPricing(prev => {
       const newBase = { ...prev.basePrices[selectedNetwork] };
-      const newSelling = { ...prev.sellingPrices[selectedNetwork] };
+      const newSelling = { ...(prev.sellingPrices[selectedNetwork] || {}) };
+      const newAgent = { ...(prev.agentPrices?.[selectedNetwork] || {}) };
+      const newSubAgent = { ...(prev.subAgentPrices?.[selectedNetwork] || {}) };
       delete newBase[capacity];
       delete newSelling[capacity];
+      delete newAgent[capacity];
+      delete newSubAgent[capacity];
       return {
         ...prev,
         basePrices: { ...prev.basePrices, [selectedNetwork]: newBase },
         sellingPrices: { ...prev.sellingPrices, [selectedNetwork]: newSelling },
+        agentPrices: { ...prev.agentPrices, [selectedNetwork]: newAgent },
+        subAgentPrices: { ...prev.subAgentPrices, [selectedNetwork]: newSubAgent },
       };
     });
     toast.success(`${capacity}GB bundle removed. Click Save to apply.`);
   };
 
   const basePrices = pricing.basePrices[selectedNetwork] || {};
-  const sellingPrices = pricing.sellingPrices[selectedNetwork] || {};
+  const tierPrices = (pricing[selectedTier] || {})[selectedNetwork] || {};
 
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-extrabold text-white tracking-tight">Pricing</h1>
-          <p className="text-text-muted text-sm mt-1">Set selling prices for data bundles.</p>
+          <p className="text-text-muted text-sm mt-1">Set selling prices for data bundles by user type.</p>
         </div>
         <div className="flex gap-2">
           <Button variant="outline" size="sm" loading={syncingGhust} onClick={handleSyncGhust}>
@@ -165,6 +197,29 @@ export default function AdminPricingPage() {
           </Button>
         </div>
       </div>
+
+      {/* Price tier tabs */}
+      <div className="flex gap-2">
+        {PRICE_TIERS.map(tier => (
+          <button
+            key={tier.id}
+            onClick={() => setSelectedTier(tier.id)}
+            className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold transition-all ${
+              selectedTier === tier.id
+                ? 'bg-accent text-white shadow-md shadow-accent/20'
+                : 'bg-white/[0.04] text-text-muted hover:bg-white/[0.08]'
+            }`}
+          >
+            {tier.id === 'sellingPrices' && <DollarSign className="w-4 h-4" />}
+            {tier.id === 'agentPrices' && <Users className="w-4 h-4" />}
+            {tier.id === 'subAgentPrices' && <UserCheck className="w-4 h-4" />}
+            {tier.label}
+          </button>
+        ))}
+      </div>
+      <p className="text-text-muted text-xs -mt-4">
+        {PRICE_TIERS.find(t => t.id === selectedTier)?.description}
+      </p>
 
       {/* Network tabs */}
       <div className="flex gap-2">
@@ -192,15 +247,17 @@ export default function AdminPricingPage() {
               <tr className="border-b border-white/[0.04]">
                 <th className="text-left text-xs font-semibold text-text-muted px-5 py-3">Bundle</th>
                 <th className="text-left text-xs font-semibold text-text-muted px-5 py-3">Cost Price</th>
-                <th className="text-left text-xs font-semibold text-text-muted px-5 py-3">Selling Price</th>
+                <th className="text-left text-xs font-semibold text-text-muted px-5 py-3">
+                  {PRICE_TIERS.find(t => t.id === selectedTier)?.label}
+                </th>
                 <th className="text-left text-xs font-semibold text-text-muted px-5 py-3">Margin</th>
                 <th className="text-left text-xs font-semibold text-text-muted px-5 py-3"></th>
               </tr>
             </thead>
             <tbody>
-              {Object.entries({ ...basePrices, ...sellingPrices }).map(([capacity]) => {
+              {Object.entries({ ...basePrices, ...tierPrices }).map(([capacity]) => {
                 const cost = basePrices[capacity] || 0;
-                const selling = sellingPrices[capacity] || 0;
+                const selling = tierPrices[capacity] || 0;
                 const margin = selling - cost;
                 return (
                   <tr key={capacity} className="border-b border-white/[0.04] last:border-0">
@@ -231,7 +288,7 @@ export default function AdminPricingPage() {
                         type="number"
                         step="0.01"
                         value={selling || ''}
-                        onChange={(e) => handlePriceChange(selectedNetwork, capacity, e.target.value)}
+                        onChange={(e) => handleTierPriceChange(selectedTier, selectedNetwork, capacity, e.target.value)}
                         className="w-24 px-3 py-1.5 rounded-lg border border-white/10 text-sm font-semibold text-text focus:border-primary focus:ring-1 focus:ring-primary/20 outline-none"
                       />
                     </td>
@@ -248,7 +305,7 @@ export default function AdminPricingPage() {
                   </tr>
                 );
               })}
-              {Object.keys(basePrices).length === 0 && Object.keys(sellingPrices).length === 0 && (
+              {Object.keys(basePrices).length === 0 && Object.keys(tierPrices).length === 0 && (
                 <tr>
                   <td colSpan={5} className="px-5 py-8 text-center text-text-muted text-sm">
                     No prices found. Add bundles manually or sync from a provider.
