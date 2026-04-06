@@ -2,7 +2,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { BarChart3, DollarSign, ShoppingBag, Package, Copy, Check, ExternalLink, LogOut, Loader2, Clock } from 'lucide-react';
+import { BarChart3, DollarSign, ShoppingBag, Package, Copy, Check, ExternalLink, LogOut, Loader2, Clock, MessageCircle } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { formatCurrency, formatDate } from '@/lib/constants';
 import api from '@/lib/api';
@@ -167,6 +167,24 @@ export default function SubAgentDashboardPage() {
             <p className="text-xs text-gray-500 mt-1">See what customers see</p>
           </a>
         </div>
+
+        {/* WhatsApp Support */}
+        {subAgent.parentWhatsapp && (
+          <a
+            href={`https://wa.me/${subAgent.parentWhatsapp.replace(/\D/g, '').replace(/^0/, '233')}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center gap-3 bg-green-500/10 border border-green-500/20 rounded-xl p-4 hover:bg-green-500/20 transition-colors"
+          >
+            <div className="w-10 h-10 bg-green-500/20 rounded-xl flex items-center justify-center">
+              <MessageCircle className="w-5 h-5 text-green-400" />
+            </div>
+            <div>
+              <p className="font-bold text-white text-sm">WhatsApp Support</p>
+              <p className="text-xs text-gray-400">Contact your parent agent ({subAgent.parentStoreName}) for help</p>
+            </div>
+          </a>
+        )}
 
         {/* Recent sales */}
         <div>

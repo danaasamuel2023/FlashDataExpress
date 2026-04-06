@@ -17,7 +17,7 @@ router.get('/:slug', async (req, res) => {
       storeSlug: req.params.slug,
       status: 'registered',
       isActive: true,
-    }).populate('storeId', 'storeName theme');
+    }).populate('storeId', 'storeName theme contactWhatsapp contactPhone');
 
     if (!subAgent) {
       return res.status(404).json({ status: 'error', message: 'Store not found' });
@@ -32,6 +32,8 @@ router.get('/:slug', async (req, res) => {
         contactWhatsapp: subAgent.contactWhatsapp,
         theme: subAgent.storeId?.theme || { primaryColor: '#FF6B00' },
         parentStoreName: subAgent.storeId?.storeName,
+        parentWhatsapp: subAgent.storeId?.contactWhatsapp || '',
+        parentPhone: subAgent.storeId?.contactPhone || '',
       },
     });
   } catch (err) {

@@ -1,6 +1,6 @@
 'use client';
 import { useState, useEffect } from 'react';
-import { Store, Type, FileText, Phone, Palette, Save, Loader2, ToggleLeft, ToggleRight } from 'lucide-react';
+import { Store, Type, FileText, Phone, MessageCircle, Palette, Save, Loader2, ToggleLeft, ToggleRight } from 'lucide-react';
 import toast from 'react-hot-toast';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
@@ -20,6 +20,7 @@ export default function StoreSettingsPage() {
     storeName: '',
     description: '',
     contactPhone: '',
+    contactWhatsapp: '',
     primaryColor: '#FF6B00',
     isActive: true,
     momoNumber: '',
@@ -40,6 +41,7 @@ export default function StoreSettingsPage() {
         storeName: s.storeName || '',
         description: s.description || '',
         contactPhone: s.contactPhone || '',
+        contactWhatsapp: s.contactWhatsapp || '',
         primaryColor: s.theme?.primaryColor || '#FF6B00',
         isActive: s.isActive !== false,
         momoNumber: s.momoDetails?.number || '',
@@ -60,6 +62,7 @@ export default function StoreSettingsPage() {
         storeName: form.storeName,
         description: form.description,
         contactPhone: form.contactPhone,
+        contactWhatsapp: form.contactWhatsapp,
         theme: { primaryColor: form.primaryColor },
         isActive: form.isActive,
         momoDetails: {
@@ -117,6 +120,14 @@ export default function StoreSettingsPage() {
             type="tel"
             value={form.contactPhone}
             onChange={(e) => setForm(prev => ({ ...prev, contactPhone: e.target.value }))}
+          />
+          <Input
+            label="WhatsApp number (shown as support on sub-agent stores)"
+            icon={MessageCircle}
+            type="tel"
+            placeholder="e.g. 0241234567"
+            value={form.contactWhatsapp}
+            onChange={(e) => setForm(prev => ({ ...prev, contactWhatsapp: e.target.value }))}
           />
           <div>
             <label className="block text-xs font-semibold text-text-muted mb-2">Store status</label>
