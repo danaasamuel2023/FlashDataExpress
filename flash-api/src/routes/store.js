@@ -126,10 +126,11 @@ router.put('/update', auth, async (req, res) => {
       return res.status(404).json({ status: 'error', message: 'Store not found' });
     }
 
-    const { storeName, description, contactPhone, theme, isActive, momoDetails } = req.body;
+    const { storeName, description, contactPhone, contactWhatsapp, theme, isActive, momoDetails } = req.body;
     if (storeName) store.storeName = storeName;
     if (description !== undefined) store.description = description;
     if (contactPhone) store.contactPhone = contactPhone;
+    if (contactWhatsapp !== undefined) store.contactWhatsapp = contactWhatsapp;
     if (theme) store.theme = { ...store.theme, ...theme };
     if (isActive !== undefined) store.isActive = isActive;
     if (momoDetails) store.momoDetails = momoDetails;

@@ -21,7 +21,7 @@ const subagentAuth = async (req, res, next) => {
     if (!user || !user.isActive) return res.status(401).json({ status: 'error', message: 'Invalid token' });
 
     const subAgent = await SubAgent.findOne({ userId: user._id, status: 'registered', isActive: true })
-      .populate('storeId', 'storeName storeSlug agentId');
+      .populate('storeId', 'storeName storeSlug agentId contactWhatsapp contactPhone');
     if (!subAgent) return res.status(403).json({ status: 'error', message: 'Not a registered sub-agent' });
 
     req.user = user;
@@ -329,6 +329,8 @@ router.get('/my-dashboard', subagentAuth, async (req, res) => {
           totalSales: req.subAgent.totalSales,
           pendingBalance: req.subAgent.pendingBalance,
           parentStoreName: req.subAgent.storeId?.storeName,
+          parentWhatsapp: req.subAgent.storeId?.contactWhatsapp || '',
+          parentPhone: req.subAgent.storeId?.contactPhone || '',
           isActive: req.subAgent.isActive,
         },
         sales,

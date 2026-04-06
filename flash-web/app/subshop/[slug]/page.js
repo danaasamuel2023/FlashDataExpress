@@ -1,6 +1,6 @@
 'use client';
 import React, { useState, useEffect, use } from 'react';
-import { ShoppingBag, Phone, Loader2, Check, Zap, AlertCircle, Shield, ChevronDown, Package, Clock, Wifi, Moon, Sun } from 'lucide-react';
+import { ShoppingBag, Phone, Loader2, Check, Zap, AlertCircle, Shield, ChevronDown, Package, Clock, Wifi, Moon, Sun, MessageCircle } from 'lucide-react';
 import toast from 'react-hot-toast';
 import NetworkIcon from '@/components/shared/NetworkIcon';
 import { formatCurrency } from '@/lib/constants';
@@ -143,6 +143,10 @@ export default function SubAgentShopPage({ params }) {
   const expansionPos = getExpansionPosition();
 
   const primaryColor = store?.theme?.primaryColor || '#FF6B00';
+  const supportWhatsapp = store?.parentWhatsapp || store?.contactWhatsapp || '';
+  const whatsappLink = supportWhatsapp
+    ? `https://wa.me/${supportWhatsapp.replace(/\D/g, '').replace(/^0/, '233')}`
+    : '';
 
   if (loading) {
     return (
@@ -207,13 +211,26 @@ export default function SubAgentShopPage({ params }) {
             <AlertCircle className="w-8 h-8 text-red-600 dark:text-red-400" />
           </div>
           <h1 className="text-xl font-bold text-gray-900 dark:text-white">Payment Failed</h1>
-          <p className="text-gray-500 dark:text-gray-400 text-sm mt-2 mb-6">We couldn&apos;t verify your payment. If you were charged, please contact the store owner.</p>
-          <button
-            onClick={() => setPaymentStatus(null)}
-            className="px-6 py-3 bg-gray-200 dark:bg-gray-700 text-gray-900 dark:text-white font-bold rounded-xl transition-colors"
-          >
-            Back to Store
-          </button>
+          <p className="text-gray-500 dark:text-gray-400 text-sm mt-2 mb-6">We couldn&apos;t verify your payment. If you were charged, please contact support.</p>
+          <div className="flex flex-col gap-3">
+            {whatsappLink && (
+              <a
+                href={whatsappLink}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center justify-center gap-2 px-6 py-3 bg-green-500 hover:bg-green-600 text-white font-bold rounded-xl transition-colors"
+              >
+                <MessageCircle className="w-5 h-5" />
+                Contact Support on WhatsApp
+              </a>
+            )}
+            <button
+              onClick={() => setPaymentStatus(null)}
+              className="px-6 py-3 bg-gray-200 dark:bg-gray-700 text-gray-900 dark:text-white font-bold rounded-xl transition-colors"
+            >
+              Back to Store
+            </button>
+          </div>
         </div>
       </div>
     );
@@ -399,7 +416,18 @@ export default function SubAgentShopPage({ params }) {
         )}
 
         {/* Footer */}
-        <div className="text-center py-6">
+        <div className="text-center py-6 space-y-3">
+          {whatsappLink && (
+            <a
+              href={whatsappLink}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-2 px-5 py-2.5 bg-green-500 hover:bg-green-600 text-white font-semibold rounded-xl transition-colors text-sm"
+            >
+              <MessageCircle className="w-4 h-4" />
+              WhatsApp Support
+            </a>
+          )}
           <p className="text-xs text-gray-400 dark:text-gray-500">
             Powered by <span className="font-bold">Agent Starter</span>
           </p>
