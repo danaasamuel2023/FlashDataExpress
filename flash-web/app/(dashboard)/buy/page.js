@@ -327,10 +327,15 @@ export default function BuyDataPage() {
                             ) : (
                               <ShoppingBag className="w-4 h-4" />
                             )}
-                            {paymentMethod === 'wallet' ? 'Pay' : 'MoMo'} {formatCurrency(selectedBundle.price)}
+                            {paymentMethod === 'wallet'
+                              ? `Pay ${formatCurrency(selectedBundle.price)}`
+                              : `MoMo ${formatCurrency(Math.round((selectedBundle.price * 1.03) * 100) / 100)}`}
                           </button>
                         </div>
-                        <p className="text-[10px] text-text-muted text-center mt-1.5">Data will be sent to this number</p>
+                        <p className="text-[10px] text-text-muted text-center mt-1.5">
+                          Data will be sent to this number
+                          {paymentMethod === 'momo' && ' • includes 3% MoMo fee'}
+                        </p>
                       </div>
                     </div>
                   )}

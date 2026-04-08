@@ -143,7 +143,7 @@ export default function SubAgentShopPage({ params }) {
   const expansionPos = getExpansionPosition();
 
   const primaryColor = store?.theme?.primaryColor || '#FF6B00';
-  const supportWhatsapp = store?.parentWhatsapp || store?.contactWhatsapp || '';
+  const supportWhatsapp = store?.contactWhatsapp || store?.parentWhatsapp || '';
   const whatsappLink = supportWhatsapp
     ? `https://wa.me/${supportWhatsapp.replace(/\D/g, '').replace(/^0/, '233')}`
     : '';

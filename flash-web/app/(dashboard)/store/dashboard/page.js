@@ -1,6 +1,6 @@
 'use client';
 import { useState, useEffect } from 'react';
-import { Store, TrendingUp, Wallet, ShoppingBag, ExternalLink, Loader2, Copy, Check, Users } from 'lucide-react';
+import { Store, TrendingUp, Wallet, ShoppingBag, ExternalLink, Loader2, Copy, Check, Users, MessageCircle, Phone } from 'lucide-react';
 import Link from 'next/link';
 import toast from 'react-hot-toast';
 import Card from '@/components/ui/Card';
@@ -12,9 +12,13 @@ export default function StoreDashboardPage() {
   const [store, setStore] = useState(null);
   const [loading, setLoading] = useState(true);
   const [copied, setCopied] = useState(false);
+  const [agentSupport, setAgentSupport] = useState({ phone: '', whatsapp: '' });
 
   useEffect(() => {
     fetchStore();
+    api.get('/auth/agent-support')
+      .then(res => setAgentSupport(res.data.data || { phone: '', whatsapp: '' }))
+      .catch(() => {});
   }, []);
 
   const fetchStore = async () => {
@@ -133,6 +137,43 @@ export default function StoreDashboardPage() {
           </div>
         </Card>
       </div>
+
+      {/* Admin support contact */}
+      {(agentSupport.whatsapp || agentSupport.phone) && (
+        <Card>
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 bg-green-500/10 rounded-xl flex items-center justify-center">
+                <MessageCircle className="w-5 h-5 text-green-500" />
+              </div>
+              <div>
+                <p className="font-bold text-white text-sm">Need help? Contact support</p>
+                <p className="text-xs text-text-muted">Reach our team if you have any issues with your store.</p>
+              </div>
+            </div>
+            <div className="flex gap-2">
+              {agentSupport.whatsapp && (
+                <a
+                  href={`https://wa.me/${agentSupport.whatsapp.replace(/\D/g, '').replace(/^0/, '233')}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-2 px-3 py-2 bg-green-500 hover:bg-green-600 text-white text-xs font-bold rounded-lg transition-colors"
+                >
+                  <MessageCircle className="w-4 h-4" /> WhatsApp
+                </a>
+              )}
+              {agentSupport.phone && (
+                <a
+                  href={`tel:${agentSupport.phone}`}
+                  className="inline-flex items-center gap-2 px-3 py-2 bg-blue-500 hover:bg-blue-600 text-white text-xs font-bold rounded-lg transition-colors"
+                >
+                  <Phone className="w-4 h-4" /> Call
+                </a>
+              )}
+            </div>
+          </div>
+        </Card>
+      )}
 
       {/* Quick links */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">

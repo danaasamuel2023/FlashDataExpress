@@ -1,6 +1,6 @@
 'use client';
 import { useState, useEffect } from 'react';
-import { Settings, Key, Globe, CreditCard, Save, Loader2, CheckCircle, XCircle, Zap } from 'lucide-react';
+import { Settings, Key, Globe, CreditCard, Save, Loader2, CheckCircle, XCircle, Zap, Phone, MessageCircle } from 'lucide-react';
 import toast from 'react-hot-toast';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
@@ -21,6 +21,8 @@ export default function AdminSettingsPage() {
     smsSenderId: '',
     withdrawalMinimum: '',
     withdrawalFeePercent: '',
+    agentSupportPhone: '',
+    agentSupportWhatsapp: '',
   });
 
   useEffect(() => {
@@ -41,6 +43,8 @@ export default function AdminSettingsPage() {
         smsSenderId: s?.sms?.senderId || '',
         withdrawalMinimum: s?.withdrawal?.minimumAmount || '',
         withdrawalFeePercent: s?.withdrawal?.feePercent || '',
+        agentSupportPhone: s?.agentSupport?.phone || '',
+        agentSupportWhatsapp: s?.agentSupport?.whatsapp || '',
       });
     } catch {
       toast.error('Failed to load settings');
@@ -59,6 +63,10 @@ export default function AdminSettingsPage() {
         withdrawal: {
           minimumAmount: parseFloat(form.withdrawalMinimum) || 10,
           feePercent: parseFloat(form.withdrawalFeePercent) || 0,
+        },
+        agentSupport: {
+          phone: form.agentSupportPhone.trim(),
+          whatsapp: form.agentSupportWhatsapp.trim(),
         },
       });
       toast.success('Settings saved!');
@@ -208,6 +216,35 @@ export default function AdminSettingsPage() {
             placeholder="Flash Data Express"
             value={form.smsSenderId}
             onChange={(e) => setForm(prev => ({ ...prev, smsSenderId: e.target.value }))}
+          />
+        </div>
+      </Card>
+
+      {/* Agent support contact */}
+      <Card>
+        <div className="flex items-center gap-3 mb-4">
+          <div className="w-10 h-10 bg-green-500/10 rounded-xl flex items-center justify-center">
+            <MessageCircle className="w-5 h-5 text-green-500" />
+          </div>
+          <div>
+            <h2 className="font-bold text-white">Agent Support Contact</h2>
+            <p className="text-xs text-text-muted">Shown to agents on their dashboard for help</p>
+          </div>
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <Input
+            label="Support phone"
+            icon={Phone}
+            placeholder="024 XXX XXXX"
+            value={form.agentSupportPhone}
+            onChange={(e) => setForm(prev => ({ ...prev, agentSupportPhone: e.target.value }))}
+          />
+          <Input
+            label="Support WhatsApp"
+            icon={MessageCircle}
+            placeholder="024 XXX XXXX"
+            value={form.agentSupportWhatsapp}
+            onChange={(e) => setForm(prev => ({ ...prev, agentSupportWhatsapp: e.target.value }))}
           />
         </div>
       </Card>

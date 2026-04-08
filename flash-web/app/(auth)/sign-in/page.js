@@ -35,10 +35,20 @@ export default function SignInPage() {
     setLoading(true);
     try {
       const res = await api.post('/auth/login', form);
-      const { token, user } = res.data.data;
+      const { token, user, subAgent } = res.data.data;
       login(token, user);
       toast.success(`Welcome back, ${user.name.split(' ')[0]}!`);
-      router.push(user.role === 'admin' ? '/admin' : '/dashboard');
+
+      if (subAgent) {
+        // Sub-agents go to their own portal
+        localStorage.setItem('ds_subagent', JSON.stringify(subAgent));
+        localStorage.setItem('ds_is_subagent', 'true');
+        router.push('/subagent/dashboard');
+      } else {
+        localStorage.removeItem('ds_subagent');
+        localStorage.removeItem('ds_is_subagent');
+        router.push(user.role === 'admin' ? '/admin' : '/dashboard');
+      }
     } catch (err) {
       const msg = err.response?.data?.message || 'Login failed. Check your credentials.';
       toast.error(msg);

@@ -328,6 +328,8 @@ router.get('/my-dashboard', subagentAuth, async (req, res) => {
           totalEarnings: req.subAgent.totalEarnings,
           totalSales: req.subAgent.totalSales,
           pendingBalance: req.subAgent.pendingBalance,
+          contactPhone: req.subAgent.contactPhone || '',
+          contactWhatsapp: req.subAgent.contactWhatsapp || '',
           parentStoreName: req.subAgent.storeId?.storeName,
           parentWhatsapp: req.subAgent.storeId?.contactWhatsapp || '',
           parentPhone: req.subAgent.storeId?.contactPhone || '',

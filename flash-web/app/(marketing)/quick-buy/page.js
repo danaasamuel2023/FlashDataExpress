@@ -658,10 +658,12 @@ function GuestBuyContent() {
                           onClick={handleBuyClick}
                           className={`px-5 py-2.5 ${cardStyle.btn} font-bold rounded-xl whitespace-nowrap text-sm transition-colors`}
                         >
-                          Buy {formatCurrency(selectedBundle.price)}
+                          Buy {formatCurrency(Math.round((selectedBundle.price * 1.03) * 100) / 100)}
                         </button>
                       </div>
-                      <p className="text-xs text-center text-gray-400 dark:text-gray-500">Data will be sent to this number</p>
+                      <p className="text-xs text-center text-gray-400 dark:text-gray-500">
+                        Data will be sent to this number &middot; includes 3% MoMo fee
+                      </p>
                     </div>
                   </div>
                 )}
