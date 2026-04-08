@@ -287,12 +287,13 @@ router.get('/settings', async (req, res) => {
 // PUT /api/admin/settings
 router.put('/settings', async (req, res) => {
   try {
-    const { datamart, paystack, sms, withdrawal } = req.body;
+    const { datamart, paystack, sms, withdrawal, agentSupport } = req.body;
     const updates = {};
     if (datamart) updates.datamart = datamart;
     if (paystack) updates.paystack = paystack;
     if (sms) updates.sms = sms;
     if (withdrawal) updates.withdrawal = withdrawal;
+    if (agentSupport) updates.agentSupport = agentSupport;
 
     await Settings.findOneAndUpdate(
       { _id: 'app_settings' },

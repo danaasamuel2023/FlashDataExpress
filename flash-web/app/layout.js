@@ -1,7 +1,7 @@
 import './globals.css';
-import Script from 'next/script';
 import { Toaster } from 'react-hot-toast';
 import { AuthProvider } from '@/context/AuthContext';
+import RezolvWidget from '@/components/RezolvWidget';
 
 export const metadata = {
   title: 'Flash Data Express - Instant Data Bundles Ghana',
@@ -35,10 +35,7 @@ export default function RootLayout({ children }) {
             }}
           />
         </AuthProvider>
-        <Script id="rezolv-config" strategy="lazyOnload">
-          {`window.REZOLV_CONFIG = { apiKey: "rzlv_22c149e96a8e3fb9d632e0fc6cdf631555c8d7b0b674cd4948565729e0eec468" };`}
-        </Script>
-        <Script src="https://api.rezolv.dev/widget.js" strategy="lazyOnload" />
+        <RezolvWidget />
       </body>
     </html>
   );

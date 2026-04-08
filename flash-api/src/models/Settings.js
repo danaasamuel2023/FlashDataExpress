@@ -56,6 +56,10 @@ const SettingsSchema = new mongoose.Schema({
   appName: { type: String, default: 'DataSwift' },
   supportPhone: String,
   supportEmail: String,
+  agentSupport: {
+    phone: { type: String, default: '' },
+    whatsapp: { type: String, default: '' },
+  },
   maintenanceMode: { type: Boolean, default: false },
   updatedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
   updatedAt: { type: Date, default: Date.now }

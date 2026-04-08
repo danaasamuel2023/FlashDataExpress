@@ -12,6 +12,12 @@ const { generateReference, formatPhone, validateGhanaPhone } = require('../utils
 
 const VALID_NETWORKS = ['YELLO', 'TELECEL', 'AT_PREMIUM'];
 
+// Customers paying with MoMo (whether logged-in non-wallet or guest) pay an
+// extra 3% to cover payment processing. Wallet-funded purchases are free.
+const MOMO_FEE_PERCENT = 3;
+const addMomoFee = (price) =>
+  Math.round((price + (price * MOMO_FEE_PERCENT) / 100) * 100) / 100;
+
 // GET /api/purchase/guest-packages - Public, no auth
 router.get('/guest-packages', async (req, res) => {
   try {
@@ -68,9 +74,11 @@ router.post('/guest-buy', async (req, res) => {
     const reference = generateReference('GST');
     const callbackUrl = `${process.env.FRONTEND_URL || 'http://localhost:3000'}/quick-buy?payment=callback&reference=${reference}`;
 
+    const chargeAmount = addMomoFee(price);
+
     const paystack = await paystackService.initializeTransaction({
       email,
-      amount: price,
+      amount: chargeAmount,
       reference,
       callback_url: callbackUrl,
       metadata: {
@@ -80,6 +88,8 @@ router.post('/guest-buy', async (req, res) => {
         phoneNumber,
         email,
         price,
+        chargeAmount,
+        feePercent: MOMO_FEE_PERCENT,
       },
     });
 
@@ -277,7 +287,10 @@ router.post('/buy-with-momo', auth, async (req, res) => {
     const reference = generateReference('MOM');
     const callbackUrl = `${process.env.FRONTEND_URL || 'http://localhost:3000'}/payment/callback`;
 
-    // Create pending transaction
+    const chargeAmount = addMomoFee(price);
+
+    // Create pending transaction (records the bundle price; the fee is paid
+    // to Paystack on top and not credited to revenue)
     await Transaction.create({
       userId: user._id,
       type: 'purchase',
@@ -293,7 +306,7 @@ router.post('/buy-with-momo', auth, async (req, res) => {
     // Initialize Paystack payment
     const paystack = await paystackService.initializeTransaction({
       email: user.email,
-      amount: price,
+      amount: chargeAmount,
       reference,
       callback_url: callbackUrl,
       metadata: {
@@ -303,6 +316,8 @@ router.post('/buy-with-momo', auth, async (req, res) => {
         capacity,
         phoneNumber,
         price,
+        chargeAmount,
+        feePercent: MOMO_FEE_PERCENT,
       },
     });
 

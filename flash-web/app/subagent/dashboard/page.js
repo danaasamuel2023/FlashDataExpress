@@ -2,7 +2,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { BarChart3, DollarSign, ShoppingBag, Package, Copy, Check, ExternalLink, LogOut, Loader2, Clock, MessageCircle } from 'lucide-react';
+import { BarChart3, DollarSign, ShoppingBag, Package, Copy, Check, ExternalLink, LogOut, Loader2, Clock, MessageCircle, Save } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { formatCurrency, formatDate } from '@/lib/constants';
 import api from '@/lib/api';
@@ -12,6 +12,8 @@ export default function SubAgentDashboardPage() {
   const [loading, setLoading] = useState(true);
   const [dashboard, setDashboard] = useState(null);
   const [copied, setCopied] = useState(false);
+  const [whatsappInput, setWhatsappInput] = useState('');
+  const [savingWhatsapp, setSavingWhatsapp] = useState(false);
 
   useEffect(() => {
     const token = localStorage.getItem('ds_token');
@@ -30,6 +32,7 @@ export default function SubAgentDashboardPage() {
       // Update local storage
       const sa = res.data.data.subAgent;
       localStorage.setItem('ds_subagent', JSON.stringify(sa));
+      setWhatsappInput(sa.contactWhatsapp || '');
     } catch (err) {
       if (err.response?.status === 401 || err.response?.status === 403) {
         router.push('/subagent/login');
@@ -47,6 +50,22 @@ export default function SubAgentDashboardPage() {
     setCopied(true);
     toast.success('Agent Store link copied!');
     setTimeout(() => setCopied(false), 2000);
+  };
+
+  const handleSaveWhatsapp = async () => {
+    setSavingWhatsapp(true);
+    try {
+      await api.put('/subagent/my-store', { contactWhatsapp: whatsappInput.trim() });
+      toast.success('Support WhatsApp updated');
+      setDashboard(prev => prev ? {
+        ...prev,
+        subAgent: { ...prev.subAgent, contactWhatsapp: whatsappInput.trim() },
+      } : prev);
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Failed to update');
+    } finally {
+      setSavingWhatsapp(false);
+    }
   };
 
   const handleLogout = () => {
@@ -168,23 +187,35 @@ export default function SubAgentDashboardPage() {
           </a>
         </div>
 
-        {/* WhatsApp Support */}
-        {subAgent.parentWhatsapp && (
-          <a
-            href={`https://wa.me/${subAgent.parentWhatsapp.replace(/\D/g, '').replace(/^0/, '233')}`}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="flex items-center gap-3 bg-green-500/10 border border-green-500/20 rounded-xl p-4 hover:bg-green-500/20 transition-colors"
-          >
+        {/* Customer Support WhatsApp setting */}
+        <div className="bg-gray-900 border border-gray-800 rounded-xl p-4">
+          <div className="flex items-center gap-3 mb-3">
             <div className="w-10 h-10 bg-green-500/20 rounded-xl flex items-center justify-center">
               <MessageCircle className="w-5 h-5 text-green-400" />
             </div>
             <div>
-              <p className="font-bold text-white text-sm">WhatsApp Support</p>
-              <p className="text-xs text-gray-400">Contact your parent agent ({subAgent.parentStoreName}) for help</p>
+              <p className="font-bold text-white text-sm">Your Customer Support WhatsApp</p>
+              <p className="text-xs text-gray-400">Customers will see this number on your Agent Store for help</p>
             </div>
-          </a>
-        )}
+          </div>
+          <div className="flex gap-2">
+            <input
+              type="tel"
+              value={whatsappInput}
+              onChange={(e) => setWhatsappInput(e.target.value)}
+              placeholder="024 XXX XXXX"
+              className="flex-1 px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white text-sm focus:border-amber-500 focus:outline-none"
+            />
+            <button
+              onClick={handleSaveWhatsapp}
+              disabled={savingWhatsapp}
+              className="flex items-center gap-2 px-4 py-2 bg-amber-500 hover:bg-amber-600 text-black font-bold rounded-lg text-sm transition-colors disabled:opacity-50"
+            >
+              {savingWhatsapp ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+              Save
+            </button>
+          </div>
+        </div>
 
         {/* Recent sales */}
         <div>

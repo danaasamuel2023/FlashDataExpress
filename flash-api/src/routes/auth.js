@@ -4,6 +4,7 @@ const jwt = require('jsonwebtoken');
 const { body, validationResult } = require('express-validator');
 const User = require('../models/User');
 const SubAgent = require('../models/SubAgent');
+const Settings = require('../models/Settings');
 const { Referral } = require('../models/Referral');
 const auth = require('../middleware/auth');
 const { formatPhone } = require('../utils/helpers');
@@ -133,11 +134,10 @@ router.post('/login', [
       return res.status(401).json({ status: 'error', message: 'Invalid email or password' });
     }
 
-    // Block sub-agents from logging into the main portal
-    const subAgentRecord = await SubAgent.findOne({ userId: user._id, status: 'registered' });
-    if (subAgentRecord) {
-      return res.status(403).json({ status: 'error', message: 'This account is registered as a sub-agent. Please log in through the sub-agent portal.' });
-    }
+    // Detect whether the credentials belong to a registered sub-agent
+    // (sub-agents are routed to their own portal automatically)
+    const subAgentRecord = await SubAgent.findOne({ userId: user._id, status: 'registered' })
+      .populate('storeId', 'storeName storeSlug');
 
     user.lastLogin = new Date();
     await user.save();
@@ -156,7 +156,16 @@ router.post('/login', [
           role: user.role,
           referralCode: user.referralCode,
           walletBalance: user.walletBalance
-        }
+        },
+        subAgent: subAgentRecord ? {
+          id: subAgentRecord._id,
+          storeName: subAgentRecord.storeName,
+          storeSlug: subAgentRecord.storeSlug,
+          parentStoreName: subAgentRecord.storeId?.storeName,
+          totalEarnings: subAgentRecord.totalEarnings,
+          totalSales: subAgentRecord.totalSales,
+          pendingBalance: subAgentRecord.pendingBalance,
+        } : null,
       }
     });
   } catch (error) {
@@ -233,6 +242,7 @@ router.post('/setup-admin', auth, async (req, res) => {
 
 // Get current user
 router.get('/me', auth, async (req, res) => {
+  const settings = await Settings.getSettings();
   res.json({
     status: 'success',
     data: {
@@ -246,9 +256,23 @@ router.get('/me', auth, async (req, res) => {
         walletBalance: req.user.walletBalance,
         isActive: req.user.isActive,
         createdAt: req.user.createdAt
-      }
+      },
+      agentSupport: settings?.agentSupport || { phone: '', whatsapp: '' },
     }
   });
+});
+
+// GET /api/auth/agent-support — Public: returns the admin-set support contact for agents
+router.get('/agent-support', async (req, res) => {
+  try {
+    const settings = await Settings.getSettings();
+    res.json({
+      status: 'success',
+      data: settings?.agentSupport || { phone: '', whatsapp: '' },
+    });
+  } catch (err) {
+    res.status(500).json({ status: 'error', message: 'Failed to load support contact' });
+  }
 });
 
 module.exports = router;
