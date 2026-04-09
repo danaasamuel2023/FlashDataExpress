@@ -143,6 +143,39 @@ router.put('/update', auth, async (req, res) => {
   }
 });
 
+// GET /api/store/agent-packages — Returns the agent's cost prices (agentPrices if set, else sellingPrices)
+router.get('/agent-packages', auth, async (req, res) => {
+  try {
+    const { network } = req.query;
+    const settings = await Settings.getSettings();
+    const agentPrices = settings?.pricing?.agentPrices || {};
+    const sellingPrices = settings?.pricing?.sellingPrices || {};
+
+    const result = [];
+    const networks = network ? [network] : [...new Set([...Object.keys(agentPrices), ...Object.keys(sellingPrices)])];
+
+    for (const net of networks) {
+      // Prefer agent-specific prices, fall back to selling prices
+      const agentNetPrices = agentPrices[net] || {};
+      const sellingNetPrices = sellingPrices[net] || {};
+      const allCapacities = [...new Set([...Object.keys(agentNetPrices), ...Object.keys(sellingNetPrices)])];
+
+      for (const capacity of allCapacities) {
+        const price = agentNetPrices[capacity] || sellingNetPrices[capacity];
+        if (price > 0) {
+          result.push({ network: net, capacity: parseFloat(capacity), price });
+        }
+      }
+    }
+
+    result.sort((a, b) => a.capacity - b.capacity);
+    res.json({ status: 'success', data: result });
+  } catch (err) {
+    console.error('Store agent-packages error:', err.message);
+    res.status(500).json({ status: 'error', message: 'Something went wrong. Please try again.' });
+  }
+});
+
 // GET /api/store/products
 router.get('/products', auth, async (req, res) => {
   try {
@@ -171,19 +204,31 @@ router.put('/products', auth, async (req, res) => {
       return res.status(400).json({ status: 'error', message: 'Products must be an array' });
     }
 
-    const ops = products.map(p => ({
-      updateOne: {
-        filter: { storeId: store._id, network: p.network, capacity: p.capacity },
-        update: {
-          $set: {
-            basePrice: p.basePrice,
-            sellingPrice: p.sellingPrice,
-            isActive: p.isActive !== false,
+    // Use agent-specific prices as base prices (what the agent pays to the platform)
+    const settings = await Settings.getSettings();
+    const agentPrices = settings?.pricing?.agentPrices || {};
+    const sellingPrices = settings?.pricing?.sellingPrices || {};
+
+    const ops = products.map(p => {
+      // Enforce correct base price from platform settings
+      const basePrice = (agentPrices[p.network] || {})[String(p.capacity)]
+        || (sellingPrices[p.network] || {})[String(p.capacity)]
+        || p.basePrice;
+
+      return {
+        updateOne: {
+          filter: { storeId: store._id, network: p.network, capacity: p.capacity },
+          update: {
+            $set: {
+              basePrice,
+              sellingPrice: p.sellingPrice,
+              isActive: p.isActive !== false,
+            },
           },
+          upsert: true,
         },
-        upsert: true,
-      },
-    }));
+      };
+    });
 
     if (ops.length > 0) {
       await StoreProduct.bulkWrite(ops);

@@ -2,11 +2,16 @@
 import Script from 'next/script';
 import { usePathname } from 'next/navigation';
 
-// Loads the Rezolv support widget on all routes except sub-agent and
-// sub-shop pages, where the parent brand should not appear.
+// Loads the Rezolv support widget only on public/customer pages.
+// Hidden on agent store pages, sub-agent pages, and public shop pages.
 export default function RezolvWidget() {
   const pathname = usePathname() || '';
-  if (pathname.startsWith('/subagent') || pathname.startsWith('/subshop')) {
+  if (
+    pathname.startsWith('/subagent') ||
+    pathname.startsWith('/subshop') ||
+    pathname.startsWith('/shop') ||
+    pathname.startsWith('/store')
+  ) {
     return null;
   }
   return (

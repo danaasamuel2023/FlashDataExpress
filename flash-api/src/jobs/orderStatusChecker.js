@@ -1,5 +1,6 @@
 const DataPurchase = require('../models/DataPurchase');
 const Store = require('../models/Store');
+const SubAgent = require('../models/SubAgent');
 const User = require('../models/User');
 const Transaction = require('../models/Transaction');
 const datamartService = require('../services/datamartService');
@@ -32,8 +33,8 @@ async function checkPendingOrders() {
           order.status = 'completed';
           await order.save();
 
-          // Credit agent for store purchases
-          if (order.purchaseSource === 'store' && order.storeDetails?.storeId) {
+          // Credit agent & sub-agent for store purchases (if not already credited)
+          if (order.purchaseSource === 'store' && order.storeDetails?.storeId && !order.storeDetails.profitCredited) {
             const agentProfit = order.storeDetails.agentProfit || 0;
             if (agentProfit > 0) {
               await Store.findOneAndUpdate(
@@ -47,6 +48,24 @@ async function checkPendingOrders() {
                 }
               );
             }
+
+            const subAgentProfit = order.storeDetails.subAgentProfit || 0;
+            const subAgentId = order.storeDetails.subAgentId;
+            if (subAgentId && subAgentProfit > 0) {
+              await SubAgent.findOneAndUpdate(
+                { _id: subAgentId },
+                {
+                  $inc: {
+                    totalEarnings: subAgentProfit,
+                    pendingBalance: subAgentProfit,
+                    totalSales: 1,
+                  },
+                }
+              );
+            }
+
+            order.storeDetails.profitCredited = true;
+            await order.save();
           }
         } else if (newStatus === 'failed' || newStatus === 'rejected') {
           order.status = 'failed';

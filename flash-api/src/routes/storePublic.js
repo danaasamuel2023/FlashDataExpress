@@ -191,6 +191,22 @@ router.get('/:slug/verify-payment', async (req, res) => {
       throw err;
     }
 
+    // Credit profits immediately (payment already verified)
+    if (agentProfit > 0) {
+      await Store.findOneAndUpdate(
+        { _id: store._id },
+        { $inc: { totalEarnings: agentProfit, pendingBalance: agentProfit, totalSales: 1 } }
+      );
+    }
+    if (subAgentRef && subAgentProfit > 0) {
+      await SubAgent.findOneAndUpdate(
+        { _id: subAgentRef },
+        { $inc: { totalEarnings: subAgentProfit, pendingBalance: subAgentProfit, totalSales: 1 } }
+      );
+    }
+    purchase.storeDetails.profitCredited = true;
+    await purchase.save();
+
     try {
       const result = await datamartService.purchaseData({
         network: meta.network,
@@ -202,20 +218,6 @@ router.get('/:slug/verify-payment', async (req, res) => {
       const dmStatus = (result?.orderStatus || result?.status || '').toLowerCase();
       if (dmStatus === 'completed' || dmStatus === 'success' || dmStatus === 'delivered') {
         purchase.status = 'completed';
-        // Credit agent earnings immediately
-        if (agentProfit > 0) {
-          await Store.findOneAndUpdate(
-            { _id: store._id },
-            { $inc: { totalEarnings: agentProfit, pendingBalance: agentProfit, totalSales: 1 } }
-          );
-        }
-        // Credit subagent if applicable
-        if (subAgentRef && subAgentProfit > 0) {
-          await SubAgent.findOneAndUpdate(
-            { _id: subAgentRef },
-            { $inc: { totalEarnings: subAgentProfit, pendingBalance: subAgentProfit, totalSales: 1 } }
-          );
-        }
       }
       await purchase.save();
     } catch (err) {

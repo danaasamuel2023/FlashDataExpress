@@ -67,8 +67,8 @@ router.post('/datamart', verifyDatamartSignature, async (req, res) => {
       purchase.status = 'completed';
       await purchase.save();
 
-      // If store purchase, credit agent earnings
-      if (purchase.purchaseSource === 'store' && purchase.storeDetails?.storeId) {
+      // Credit agent/subagent earnings if not already credited at purchase time
+      if (purchase.purchaseSource === 'store' && purchase.storeDetails?.storeId && !purchase.storeDetails.profitCredited) {
         const agentProfit = purchase.storeDetails.agentProfit || 0;
         if (agentProfit > 0) {
           await Store.findOneAndUpdate(
@@ -83,7 +83,6 @@ router.post('/datamart', verifyDatamartSignature, async (req, res) => {
           );
         }
 
-        // Credit subagent if applicable
         const subAgentProfit = purchase.storeDetails.subAgentProfit || 0;
         const subAgentId = purchase.storeDetails.subAgentId;
         if (subAgentId && subAgentProfit > 0) {
@@ -98,6 +97,9 @@ router.post('/datamart', verifyDatamartSignature, async (req, res) => {
             }
           );
         }
+
+        purchase.storeDetails.profitCredited = true;
+        await purchase.save();
       }
 
     } else if (newStatus === 'failed' || newStatus === 'rejected' || newStatus === 'cancelled') {
