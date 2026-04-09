@@ -29,7 +29,7 @@ export default function StoreProductsPage() {
     try {
       const [productsRes, ...pkgResponses] = await Promise.all([
         api.get('/store/products'),
-        ...NETWORKS.map(n => api.get(`/purchase/packages?network=${n.id}`)),
+        ...NETWORKS.map(n => api.get(`/store/agent-packages?network=${n.id}`)),
       ]);
       setProducts(productsRes.data.data || []);
       const pkgs = {};

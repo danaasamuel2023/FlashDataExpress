@@ -61,7 +61,8 @@ const DataPurchaseSchema = new mongoose.Schema({
     customerName: String,
     customerPhone: String,
     subAgentId: { type: mongoose.Schema.Types.ObjectId, ref: 'SubAgent' },
-    subAgentProfit: Number
+    subAgentProfit: Number,
+    profitCredited: { type: Boolean, default: false }
   },
   balanceBefore: Number,
   balanceAfter: Number,

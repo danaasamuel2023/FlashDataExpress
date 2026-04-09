@@ -227,29 +227,54 @@ export default function SubAgentDashboardPage() {
             </div>
           ) : (
             <div className="space-y-2">
-              {sales.map(sale => (
-                <div key={sale._id} className="bg-gray-900 border border-gray-800 rounded-xl p-4 flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <div className={`w-2 h-2 rounded-full ${
-                      sale.status === 'completed' ? 'bg-green-400' :
-                      sale.status === 'failed' ? 'bg-red-400' : 'bg-yellow-400'
-                    }`} />
-                    <div>
-                      <p className="text-sm font-medium text-white">
-                        {sale.network} {sale.capacity}GB
-                      </p>
-                      <p className="text-xs text-gray-500">{sale.phoneNumber}</p>
+              {sales.map(sale => {
+                const profit = sale.storeDetails?.subAgentProfit || 0;
+                const statusLabel = sale.status === 'completed' ? 'Completed'
+                  : sale.status === 'failed' ? 'Failed'
+                  : sale.status === 'processing' ? 'Processing'
+                  : 'Pending';
+                return (
+                  <div key={sale._id} className="bg-gray-900 border border-gray-800 rounded-xl p-4">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <div className={`w-2 h-2 rounded-full ${
+                          sale.status === 'completed' ? 'bg-green-400' :
+                          sale.status === 'failed' ? 'bg-red-400' : 'bg-yellow-400'
+                        }`} />
+                        <div>
+                          <p className="text-sm font-medium text-white">
+                            {sale.network} {sale.capacity}GB
+                          </p>
+                          <p className="text-xs text-gray-500">{sale.phoneNumber}</p>
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-sm font-bold text-white">{formatCurrency(sale.price)}</p>
+                        <span className={`inline-block text-[10px] font-semibold px-2 py-0.5 rounded-full ${
+                          sale.status === 'completed' ? 'bg-green-500/10 text-green-400' :
+                          sale.status === 'failed' ? 'bg-red-500/10 text-red-400' :
+                          'bg-yellow-500/10 text-yellow-400'
+                        }`}>{statusLabel}</span>
+                      </div>
                     </div>
-                  </div>
-                  <div className="text-right">
-                    <p className="text-sm font-bold text-white">{formatCurrency(sale.price)}</p>
-                    <div className="flex items-center gap-1 text-xs text-gray-500">
-                      <Clock className="w-3 h-3" />
-                      {formatDate(sale.createdAt)}
+                    <div className="mt-2 flex items-center justify-between text-xs text-gray-500">
+                      <div className="flex items-center gap-1">
+                        <Clock className="w-3 h-3" />
+                        {formatDate(sale.createdAt)}
+                      </div>
+                      <span className="font-mono">{sale.reference}</span>
                     </div>
+                    {profit > 0 && (
+                      <div className="mt-1 text-xs text-green-400 font-semibold">
+                        Profit: {formatCurrency(profit)}
+                      </div>
+                    )}
+                    {sale.status === 'failed' && sale.failureReason && (
+                      <p className="mt-1 text-xs text-red-400">{sale.failureReason}</p>
+                    )}
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>

@@ -165,9 +165,11 @@ router.get('/:slug/verify-payment', async (req, res) => {
     // Platform cost (what the parent agent pays to the platform)
     const storeSettings = await Settings.getSettings();
     const platformSubAgentPrices = storeSettings?.pricing?.subAgentPrices || {};
+    const platformAgentPrices = storeSettings?.pricing?.agentPrices || {};
     const platformSellingPrices = storeSettings?.pricing?.sellingPrices || {};
-    // Use sub-agent-specific prices if set, otherwise fall back to regular selling prices
+    // Use sub-agent-specific prices if set, then agent prices, then regular selling prices
     const platformCost = (platformSubAgentPrices[meta.network] || {})[String(meta.capacity)]
+      || (platformAgentPrices[meta.network] || {})[String(meta.capacity)]
       || (platformSellingPrices[meta.network] || {})[String(meta.capacity)] || 0;
 
     // Sub-agent's selling price to customer
@@ -211,6 +213,22 @@ router.get('/:slug/verify-payment', async (req, res) => {
       throw err;
     }
 
+    // Credit profits immediately (payment already verified)
+    if (agentProfit > 0) {
+      await Store.findOneAndUpdate(
+        { _id: store._id },
+        { $inc: { totalEarnings: agentProfit, pendingBalance: agentProfit, totalSales: 1 } }
+      );
+    }
+    if (subAgentProfit > 0) {
+      await SubAgent.findOneAndUpdate(
+        { _id: subAgent._id },
+        { $inc: { totalEarnings: subAgentProfit, pendingBalance: subAgentProfit, totalSales: 1 } }
+      );
+    }
+    purchase.storeDetails.profitCredited = true;
+    await purchase.save();
+
     try {
       const result = await datamartService.purchaseData({
         network: meta.network,
@@ -224,22 +242,6 @@ router.get('/:slug/verify-payment', async (req, res) => {
 
       if (dmStatus === 'completed' || dmStatus === 'success' || dmStatus === 'delivered') {
         purchase.status = 'completed';
-
-        // Credit parent agent earnings
-        if (agentProfit > 0) {
-          await Store.findOneAndUpdate(
-            { _id: store._id },
-            { $inc: { totalEarnings: agentProfit, pendingBalance: agentProfit, totalSales: 1 } }
-          );
-        }
-
-        // Credit sub-agent earnings
-        if (subAgentProfit > 0) {
-          await SubAgent.findOneAndUpdate(
-            { _id: subAgent._id },
-            { $inc: { totalEarnings: subAgentProfit, pendingBalance: subAgentProfit, totalSales: 1 } }
-          );
-        }
       }
       await purchase.save();
     } catch (err) {
