@@ -9,7 +9,10 @@ const WithdrawalSchema = new mongoose.Schema({
   storeId: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Store',
-    required: true
+  },
+  subAgentId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'SubAgent',
   },
   amount: {
     type: Number,

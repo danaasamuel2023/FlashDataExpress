@@ -53,6 +53,11 @@ const SubAgentSchema = new mongoose.Schema({
   totalEarnings: { type: Number, default: 0 },
   totalSales: { type: Number, default: 0 },
   pendingBalance: { type: Number, default: 0 },
+  momoDetails: {
+    number: String,
+    network: String,
+    name: String
+  },
   isActive: {
     type: Boolean,
     default: true

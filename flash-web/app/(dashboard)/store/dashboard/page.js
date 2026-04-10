@@ -1,11 +1,11 @@
 'use client';
 import { useState, useEffect } from 'react';
-import { Store, TrendingUp, Wallet, ShoppingBag, ExternalLink, Loader2, Copy, Check, Users, MessageCircle, Phone } from 'lucide-react';
+import { Store, TrendingUp, Wallet, ShoppingBag, ExternalLink, Loader2, Copy, Check, Users, MessageCircle, Phone, Clock, DollarSign, CalendarDays, RefreshCw } from 'lucide-react';
 import Link from 'next/link';
 import toast from 'react-hot-toast';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
-import { formatCurrency } from '@/lib/constants';
+import { formatCurrency, formatDate } from '@/lib/constants';
 import api from '@/lib/api';
 
 export default function StoreDashboardPage() {
@@ -13,13 +13,28 @@ export default function StoreDashboardPage() {
   const [loading, setLoading] = useState(true);
   const [copied, setCopied] = useState(false);
   const [agentSupport, setAgentSupport] = useState({ phone: '', whatsapp: '' });
+  const [dailySales, setDailySales] = useState(null);
+  const [loadingDaily, setLoadingDaily] = useState(false);
 
   useEffect(() => {
     fetchStore();
+    fetchDailySales();
     api.get('/auth/agent-support')
       .then(res => setAgentSupport(res.data.data || { phone: '', whatsapp: '' }))
       .catch(() => {});
   }, []);
+
+  const fetchDailySales = async () => {
+    setLoadingDaily(true);
+    try {
+      const res = await api.get('/store/daily-sales');
+      setDailySales(res.data.data);
+    } catch {
+      // ignore if no store yet
+    } finally {
+      setLoadingDaily(false);
+    }
+  };
 
   const fetchStore = async () => {
     try {
@@ -137,6 +152,85 @@ export default function StoreDashboardPage() {
           </div>
         </Card>
       </div>
+
+      {/* Today's summary */}
+      {dailySales && (
+        <div className="grid grid-cols-3 gap-4">
+          <Card>
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 bg-primary/10 rounded-xl flex items-center justify-center">
+                <CalendarDays className="w-5 h-5 text-primary" />
+              </div>
+              <div>
+                <p className="text-xl font-extrabold text-white">{dailySales.count}</p>
+                <p className="text-xs text-text-muted">Today&apos;s Sales</p>
+              </div>
+            </div>
+          </Card>
+          <Card>
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 bg-accent/10 rounded-xl flex items-center justify-center">
+                <ShoppingBag className="w-5 h-5 text-accent" />
+              </div>
+              <div>
+                <p className="text-xl font-extrabold text-white">{formatCurrency(dailySales.todayRevenue)}</p>
+                <p className="text-xs text-text-muted">Today&apos;s Revenue</p>
+              </div>
+            </div>
+          </Card>
+          <Card>
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 bg-success/10 rounded-xl flex items-center justify-center">
+                <DollarSign className="w-5 h-5 text-success" />
+              </div>
+              <div>
+                <p className="text-xl font-extrabold text-white">{formatCurrency(dailySales.todayProfit)}</p>
+                <p className="text-xs text-text-muted">Today&apos;s Profit</p>
+              </div>
+            </div>
+          </Card>
+        </div>
+      )}
+
+      {/* Today's Sales History */}
+      {store && (
+        <Card>
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="font-bold text-white">Today&apos;s Sales</h2>
+            <button onClick={fetchDailySales} disabled={loadingDaily} className="flex items-center gap-1.5 text-xs font-bold text-primary hover:text-primary/80 disabled:opacity-50">
+              <RefreshCw className={`w-3.5 h-3.5 ${loadingDaily ? 'animate-spin' : ''}`} /> Refresh
+            </button>
+          </div>
+          {loadingDaily ? (
+            <div className="flex justify-center py-8"><Loader2 className="w-5 h-5 text-primary animate-spin" /></div>
+          ) : !dailySales?.sales?.length ? (
+            <p className="text-text-muted text-sm text-center py-8">No store sales today yet. Share your store link to start selling!</p>
+          ) : (
+            <div className="space-y-3 max-h-80 overflow-y-auto">
+              {dailySales.sales.map((sale, i) => (
+                <div key={i} className="flex items-center justify-between py-2 border-b border-white/[0.04] last:border-0">
+                  <div>
+                    <p className="font-semibold text-sm text-white">{sale.network} {sale.capacity}GB</p>
+                    <p className="text-xs text-text-muted">{sale.phoneNumber}</p>
+                    <p className="text-[10px] text-text-muted mt-0.5">{formatDate(sale.createdAt)} &middot; {sale.reference}</p>
+                  </div>
+                  <div className="text-right">
+                    <p className="font-bold text-sm text-white">{formatCurrency(sale.price)}</p>
+                    <p className="text-[10px] font-semibold text-success">
+                      Profit: {formatCurrency(sale.storeDetails?.agentProfit || 0)}
+                    </p>
+                    <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${
+                      sale.status === 'completed' ? 'bg-success/10 text-success' :
+                      sale.status === 'failed' ? 'bg-error/10 text-error' :
+                      'bg-accent/10 text-accent'
+                    }`}>{sale.status}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </Card>
+      )}
 
       {/* Admin support contact */}
       {(agentSupport.whatsapp || agentSupport.phone) && (

@@ -2,7 +2,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { BarChart3, DollarSign, ShoppingBag, Package, Copy, Check, ExternalLink, LogOut, Loader2, Clock, MessageCircle, Save } from 'lucide-react';
+import { BarChart3, DollarSign, ShoppingBag, Package, Copy, Check, ExternalLink, LogOut, Loader2, Clock, MessageCircle, Save, CalendarDays, RefreshCw, Wallet } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { formatCurrency, formatDate } from '@/lib/constants';
 import api from '@/lib/api';
@@ -14,6 +14,8 @@ export default function SubAgentDashboardPage() {
   const [copied, setCopied] = useState(false);
   const [whatsappInput, setWhatsappInput] = useState('');
   const [savingWhatsapp, setSavingWhatsapp] = useState(false);
+  const [dailySales, setDailySales] = useState(null);
+  const [loadingDaily, setLoadingDaily] = useState(false);
 
   useEffect(() => {
     const token = localStorage.getItem('ds_token');
@@ -22,6 +24,7 @@ export default function SubAgentDashboardPage() {
       return;
     }
     fetchDashboard();
+    fetchDailySales();
   }, []);
 
   const fetchDashboard = async () => {
@@ -41,6 +44,18 @@ export default function SubAgentDashboardPage() {
       }
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchDailySales = async () => {
+    setLoadingDaily(true);
+    try {
+      const res = await api.get('/subagent/my-daily-sales');
+      setDailySales(res.data.data);
+    } catch {
+      // ignore
+    } finally {
+      setLoadingDaily(false);
     }
   };
 
@@ -165,15 +180,88 @@ export default function SubAgentDashboardPage() {
           </div>
         </div>
 
+        {/* Today's summary */}
+        {dailySales && (
+          <div className="grid grid-cols-3 gap-3">
+            <div className="bg-gray-900 border border-gray-800 rounded-xl p-3">
+              <div className="flex items-center gap-2">
+                <CalendarDays className="w-4 h-4 text-amber-400" />
+                <div>
+                  <p className="text-lg font-extrabold text-white">{dailySales.count}</p>
+                  <p className="text-[10px] text-gray-500">Today&apos;s Sales</p>
+                </div>
+              </div>
+            </div>
+            <div className="bg-gray-900 border border-gray-800 rounded-xl p-3">
+              <div className="flex items-center gap-2">
+                <ShoppingBag className="w-4 h-4 text-blue-400" />
+                <div>
+                  <p className="text-lg font-extrabold text-white">{formatCurrency(dailySales.todayRevenue)}</p>
+                  <p className="text-[10px] text-gray-500">Today&apos;s Revenue</p>
+                </div>
+              </div>
+            </div>
+            <div className="bg-gray-900 border border-gray-800 rounded-xl p-3">
+              <div className="flex items-center gap-2">
+                <DollarSign className="w-4 h-4 text-green-400" />
+                <div>
+                  <p className="text-lg font-extrabold text-white">{formatCurrency(dailySales.todayProfit)}</p>
+                  <p className="text-[10px] text-gray-500">Today&apos;s Profit</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Today's Sales List */}
+        {dailySales?.sales?.length > 0 && (
+          <div>
+            <div className="flex items-center justify-between mb-3">
+              <h2 className="text-lg font-bold text-white">Today&apos;s Sales</h2>
+              <button onClick={fetchDailySales} disabled={loadingDaily} className="flex items-center gap-1 text-xs text-amber-400 font-bold">
+                <RefreshCw className={`w-3 h-3 ${loadingDaily ? 'animate-spin' : ''}`} /> Refresh
+              </button>
+            </div>
+            <div className="space-y-2">
+              {dailySales.sales.map(sale => (
+                <div key={sale._id} className="bg-gray-900 border border-gray-800 rounded-xl p-3 flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-medium text-white">{sale.network} {sale.capacity}GB</p>
+                    <p className="text-xs text-gray-500">{sale.phoneNumber}</p>
+                    <p className="text-[10px] text-gray-600">{formatDate(sale.createdAt)}</p>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-sm font-bold text-white">{formatCurrency(sale.price)}</p>
+                    <p className="text-[10px] font-semibold text-green-400">Profit: {formatCurrency(sale.storeDetails?.subAgentProfit || 0)}</p>
+                    <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${
+                      sale.status === 'completed' ? 'bg-green-500/10 text-green-400' :
+                      sale.status === 'failed' ? 'bg-red-500/10 text-red-400' :
+                      'bg-yellow-500/10 text-yellow-400'
+                    }`}>{sale.status}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
         {/* Quick actions */}
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-3 gap-4">
           <Link
             href="/subagent/products"
             className="bg-gray-900 border border-gray-800 rounded-xl p-4 hover:border-amber-500/30 transition-colors group"
           >
             <Package className="w-6 h-6 text-amber-400 mb-2" />
-            <p className="font-bold text-white text-sm">Manage Products</p>
-            <p className="text-xs text-gray-500 mt-1">Set your selling prices</p>
+            <p className="font-bold text-white text-sm">Products</p>
+            <p className="text-xs text-gray-500 mt-1">Set prices</p>
+          </Link>
+          <Link
+            href="/subagent/withdrawals"
+            className="bg-gray-900 border border-gray-800 rounded-xl p-4 hover:border-amber-500/30 transition-colors group"
+          >
+            <Wallet className="w-6 h-6 text-amber-400 mb-2" />
+            <p className="font-bold text-white text-sm">Withdraw</p>
+            <p className="text-xs text-gray-500 mt-1">Cash out</p>
           </Link>
           <a
             href={`/subshop/${subAgent.storeSlug}`}
@@ -182,8 +270,8 @@ export default function SubAgentDashboardPage() {
             className="bg-gray-900 border border-gray-800 rounded-xl p-4 hover:border-amber-500/30 transition-colors group"
           >
             <ExternalLink className="w-6 h-6 text-amber-400 mb-2" />
-            <p className="font-bold text-white text-sm">View Agent Store</p>
-            <p className="text-xs text-gray-500 mt-1">See what customers see</p>
+            <p className="font-bold text-white text-sm">My Store</p>
+            <p className="text-xs text-gray-500 mt-1">View store</p>
           </a>
         </div>
 
