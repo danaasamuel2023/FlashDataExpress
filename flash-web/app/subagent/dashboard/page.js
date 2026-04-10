@@ -217,6 +217,42 @@ export default function SubAgentDashboardPage() {
           </div>
         </div>
 
+        {/* Parent Agent Support */}
+        {(subAgent.parentWhatsapp || subAgent.parentPhone) && (
+          <div className="bg-gray-900 border border-gray-800 rounded-xl p-4">
+            <div className="flex items-center gap-3 mb-2">
+              <div className="w-10 h-10 bg-amber-500/20 rounded-xl flex items-center justify-center">
+                <MessageCircle className="w-5 h-5 text-amber-400" />
+              </div>
+              <div>
+                <p className="font-bold text-white text-sm">Agent Support ({subAgent.parentStoreName})</p>
+                <p className="text-xs text-gray-400">Contact your parent agent for help</p>
+              </div>
+            </div>
+            <div className="flex gap-2">
+              {subAgent.parentWhatsapp && (
+                <a
+                  href={`https://wa.me/${subAgent.parentWhatsapp.replace(/\D/g, '').replace(/^0/, '233')}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-green-500 hover:bg-green-600 text-white font-bold rounded-lg text-sm transition-colors"
+                >
+                  <MessageCircle className="w-4 h-4" />
+                  WhatsApp
+                </a>
+              )}
+              {subAgent.parentPhone && (
+                <a
+                  href={`tel:${subAgent.parentPhone}`}
+                  className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white font-bold rounded-lg text-sm transition-colors"
+                >
+                  Call
+                </a>
+              )}
+            </div>
+          </div>
+        )}
+
         {/* Recent sales */}
         <div>
           <h2 className="text-lg font-bold text-white mb-3">Recent Sales</h2>
