@@ -258,6 +258,33 @@ router.get('/sales', auth, async (req, res) => {
   }
 });
 
+// GET /api/store/daily-sales — Today's store sales with profit
+router.get('/daily-sales', auth, async (req, res) => {
+  try {
+    const store = await Store.findOne({ agentId: req.user._id });
+    if (!store) return res.status(404).json({ status: 'error', message: 'Store not found' });
+
+    const todayStart = new Date();
+    todayStart.setHours(0, 0, 0, 0);
+
+    const sales = await DataPurchase.find({
+      'storeDetails.storeId': store._id,
+      createdAt: { $gte: todayStart },
+    }).sort({ createdAt: -1 }).limit(200).lean();
+
+    const todayProfit = sales.reduce((sum, s) => sum + (s.storeDetails?.agentProfit || 0), 0);
+    const todayRevenue = sales.reduce((sum, s) => sum + (s.price || 0), 0);
+
+    res.json({
+      status: 'success',
+      data: { sales, todayProfit, todayRevenue, count: sales.length },
+    });
+  } catch (err) {
+    console.error('Store error:', err.message);
+    res.status(500).json({ status: 'error', message: 'Something went wrong. Please try again.' });
+  }
+});
+
 // GET /api/store/earnings
 router.get('/earnings', auth, async (req, res) => {
   try {

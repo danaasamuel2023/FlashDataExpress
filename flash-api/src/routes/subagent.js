@@ -8,7 +8,9 @@ const SubAgent = require('../models/SubAgent');
 const SubAgentProduct = require('../models/SubAgentProduct');
 const User = require('../models/User');
 const DataPurchase = require('../models/DataPurchase');
-const { formatPhone } = require('../utils/helpers');
+const Withdrawal = require('../models/Withdrawal');
+const Settings = require('../models/Settings');
+const { formatPhone, generateReference } = require('../utils/helpers');
 
 // Middleware: authenticate sub-agent via JWT (same token system, but verifies they are a sub-agent)
 const subagentAuth = async (req, res, next) => {
@@ -334,12 +336,37 @@ router.get('/my-dashboard', subagentAuth, async (req, res) => {
           parentWhatsapp: req.subAgent.storeId?.contactWhatsapp || '',
           parentPhone: req.subAgent.storeId?.contactPhone || '',
           isActive: req.subAgent.isActive,
+          momoDetails: req.subAgent.momoDetails || {},
         },
         sales,
       },
     });
   } catch (err) {
     console.error('SubAgent dashboard error:', err.message);
+    res.status(500).json({ status: 'error', message: 'Something went wrong. Please try again.' });
+  }
+});
+
+// GET /api/subagent/my-daily-sales — Sub-agent's today's sales
+router.get('/my-daily-sales', subagentAuth, async (req, res) => {
+  try {
+    const todayStart = new Date();
+    todayStart.setHours(0, 0, 0, 0);
+
+    const sales = await DataPurchase.find({
+      'storeDetails.subAgentId': req.subAgent._id,
+      createdAt: { $gte: todayStart },
+    }).sort({ createdAt: -1 }).limit(200).lean();
+
+    const todayProfit = sales.reduce((sum, s) => sum + (s.storeDetails?.subAgentProfit || 0), 0);
+    const todayRevenue = sales.reduce((sum, s) => sum + (s.price || 0), 0);
+
+    res.json({
+      status: 'success',
+      data: { sales, todayProfit, todayRevenue, count: sales.length },
+    });
+  } catch (err) {
+    console.error('SubAgent daily-sales error:', err.message);
     res.status(500).json({ status: 'error', message: 'Something went wrong. Please try again.' });
   }
 });
@@ -405,15 +432,92 @@ router.put('/my-products', subagentAuth, async (req, res) => {
 // PUT /api/subagent/my-store — Sub-agent updates their store details
 router.put('/my-store', subagentAuth, async (req, res) => {
   try {
-    const { storeName, contactPhone, contactWhatsapp } = req.body;
+    const { storeName, contactPhone, contactWhatsapp, momoDetails } = req.body;
     if (storeName) req.subAgent.storeName = storeName;
     if (contactPhone) req.subAgent.contactPhone = contactPhone;
     if (contactWhatsapp !== undefined) req.subAgent.contactWhatsapp = contactWhatsapp;
+    if (momoDetails) req.subAgent.momoDetails = momoDetails;
 
     await req.subAgent.save();
     res.json({ status: 'success', data: req.subAgent });
   } catch (err) {
     console.error('SubAgent update store error:', err.message);
+    res.status(500).json({ status: 'error', message: 'Something went wrong. Please try again.' });
+  }
+});
+
+// POST /api/subagent/withdrawal-request — Sub-agent requests withdrawal
+router.post('/withdrawal-request', subagentAuth, async (req, res) => {
+  try {
+    const { amount } = req.body;
+    const value = parseFloat(amount);
+
+    const settings = await Settings.getSettings();
+    const minAmount = settings?.withdrawal?.minimumAmount || 10;
+    const feePercent = settings?.withdrawal?.feePercent || 0;
+
+    if (!value || value < minAmount) {
+      return res.status(400).json({ status: 'error', message: `Minimum withdrawal is GH₵${minAmount}` });
+    }
+
+    if (value > req.subAgent.pendingBalance) {
+      return res.status(400).json({
+        status: 'error',
+        message: `You can only withdraw up to ${req.subAgent.pendingBalance.toFixed(2)} GH₵`,
+      });
+    }
+
+    if (!req.subAgent.momoDetails?.number) {
+      return res.status(400).json({ status: 'error', message: 'Set up your MoMo details first' });
+    }
+
+    const pendingWithdrawal = await Withdrawal.findOne({
+      userId: req.user._id,
+      status: 'pending',
+    });
+    if (pendingWithdrawal) {
+      return res.status(400).json({ status: 'error', message: 'You have a pending withdrawal request' });
+    }
+
+    const fee = Math.round(value * feePercent / 100 * 100) / 100;
+    const netAmount = value - fee;
+
+    const updated = await SubAgent.findOneAndUpdate(
+      { _id: req.subAgent._id, pendingBalance: { $gte: value } },
+      { $inc: { pendingBalance: -value } },
+      { new: true }
+    );
+
+    if (!updated) {
+      return res.status(400).json({ status: 'error', message: 'Insufficient balance' });
+    }
+
+    const withdrawal = await Withdrawal.create({
+      userId: req.user._id,
+      subAgentId: req.subAgent._id,
+      amount: value,
+      fee,
+      netAmount,
+      reference: generateReference('SWD'),
+      momoDetails: req.subAgent.momoDetails,
+    });
+
+    res.json({ status: 'success', data: withdrawal });
+  } catch (err) {
+    console.error('SubAgent withdrawal error:', err.message);
+    res.status(500).json({ status: 'error', message: 'Something went wrong. Please try again.' });
+  }
+});
+
+// GET /api/subagent/withdrawal-history — Sub-agent's withdrawal history
+router.get('/withdrawal-history', subagentAuth, async (req, res) => {
+  try {
+    const withdrawals = await Withdrawal.find({ userId: req.user._id })
+      .sort({ createdAt: -1 })
+      .limit(50);
+    res.json({ status: 'success', data: withdrawals });
+  } catch (err) {
+    console.error('SubAgent withdrawal history error:', err.message);
     res.status(500).json({ status: 'error', message: 'Something went wrong. Please try again.' });
   }
 });

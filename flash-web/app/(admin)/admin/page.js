@@ -2,7 +2,7 @@
 import { useState, useEffect } from 'react';
 import { Users, ShoppingBag, Wallet, TrendingUp, Loader2, RefreshCw, DollarSign, CalendarDays } from 'lucide-react';
 import Card from '@/components/ui/Card';
-import { formatCurrency, NETWORKS } from '@/lib/constants';
+import { formatCurrency, formatDate, NETWORKS } from '@/lib/constants';
 import api from '@/lib/api';
 
 const NETWORK_LABELS = { YELLO: 'MTN', TELECEL: 'Telecel', AT_PREMIUM: 'AirtelTigo' };
@@ -12,9 +12,12 @@ export default function AdminOverviewPage() {
   const [providerPrices, setProviderPrices] = useState(null);
   const [loading, setLoading] = useState(true);
   const [fetchingPrices, setFetchingPrices] = useState(false);
+  const [dailySales, setDailySales] = useState(null);
+  const [loadingDaily, setLoadingDaily] = useState(false);
 
   useEffect(() => {
     fetchStats();
+    fetchDailySales();
   }, []);
 
   const fetchStats = async () => {
@@ -25,6 +28,18 @@ export default function AdminOverviewPage() {
       // silently fail
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchDailySales = async () => {
+    setLoadingDaily(true);
+    try {
+      const res = await api.get('/admin/daily-sales');
+      setDailySales(res.data.data);
+    } catch {
+      // silently fail
+    } finally {
+      setLoadingDaily(false);
     }
   };
 
@@ -198,6 +213,66 @@ export default function AdminOverviewPage() {
           </div>
         </Card>
       )}
+
+      {/* Today's Sales History */}
+      <Card>
+        <div className="flex items-center justify-between mb-4">
+          <div>
+            <h2 className="font-bold text-white">Today&apos;s Sales History</h2>
+            {dailySales && (
+              <p className="text-xs text-text-muted mt-1">
+                {dailySales.count} orders &middot; Revenue: {formatCurrency(dailySales.totalRevenue)} &middot; Profit: {formatCurrency(dailySales.totalProfit)}
+              </p>
+            )}
+          </div>
+          <button
+            onClick={fetchDailySales}
+            disabled={loadingDaily}
+            className="flex items-center gap-1.5 text-xs font-bold text-primary hover:text-primary/80 transition-colors disabled:opacity-50"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${loadingDaily ? 'animate-spin' : ''}`} />
+            Refresh
+          </button>
+        </div>
+        {loadingDaily ? (
+          <div className="flex justify-center py-8"><Loader2 className="w-5 h-5 text-primary animate-spin" /></div>
+        ) : !dailySales?.sales?.length ? (
+          <p className="text-text-muted text-sm text-center py-8">No sales today yet.</p>
+        ) : (
+          <div className="space-y-3 max-h-96 overflow-y-auto">
+            {dailySales.sales.map((order, i) => {
+              const profit = (order.price || 0) - (order.costPrice || 0);
+              return (
+                <div key={i} className="flex items-center justify-between py-2 border-b border-white/[0.04] last:border-0">
+                  <div>
+                    <p className="font-semibold text-sm text-white">{order.phoneNumber}</p>
+                    <p className="text-xs text-text-muted">
+                      {order.network} &middot; {order.capacity}GB
+                      {order.purchaseSource === 'guest' && <span className="ml-1 text-primary">(Guest)</span>}
+                      {order.purchaseSource === 'store' && <span className="ml-1 text-accent">(Store)</span>}
+                    </p>
+                    <p className="text-[10px] text-text-muted mt-0.5">{formatDate(order.createdAt)} &middot; {order.reference}</p>
+                  </div>
+                  <div className="text-right">
+                    <p className="font-bold text-sm text-white">{formatCurrency(order.price)}</p>
+                    <p className={`text-[10px] font-semibold ${profit > 0 ? 'text-success' : 'text-text-muted'}`}>
+                      Profit: {formatCurrency(profit)}
+                    </p>
+                    <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${
+                      order.status === 'completed' ? 'bg-success/10 text-success' :
+                      order.status === 'processing' ? 'bg-blue-500/10 text-blue-500' :
+                      order.status === 'pending' ? 'bg-accent/10 text-accent' :
+                      'bg-error/10 text-error'
+                    }`}>
+                      {order.status}
+                    </span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </Card>
 
       {/* Recent activity */}
       {stats?.recentOrders?.length > 0 && (

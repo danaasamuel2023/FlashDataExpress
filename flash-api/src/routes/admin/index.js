@@ -76,6 +76,30 @@ router.get('/dashboard', async (req, res) => {
   }
 });
 
+// GET /api/admin/daily-sales - Today's individual sales
+router.get('/daily-sales', async (req, res) => {
+  try {
+    const todayStart = new Date();
+    todayStart.setHours(0, 0, 0, 0);
+
+    const sales = await DataPurchase.find({ createdAt: { $gte: todayStart } })
+      .sort({ createdAt: -1 })
+      .limit(200)
+      .lean();
+
+    const totalRevenue = sales.reduce((sum, s) => sum + (s.price || 0), 0);
+    const totalProfit = sales.reduce((sum, s) => sum + ((s.price || 0) - (s.costPrice || 0)), 0);
+
+    res.json({
+      status: 'success',
+      data: { sales, totalRevenue, totalProfit, count: sales.length },
+    });
+  } catch (err) {
+    console.error('Admin error:', err.message);
+    res.status(500).json({ status: 'error', message: 'Something went wrong. Please try again.' });
+  }
+});
+
 // GET /api/admin/provider-prices - Fetch live prices from DataMart
 router.get('/provider-prices', async (req, res) => {
   try {
@@ -167,10 +191,18 @@ router.put('/withdrawals/:id', async (req, res) => {
 
     // If rejected, refund the pending balance
     if (status === 'rejected') {
-      await Store.findOneAndUpdate(
-        { _id: withdrawal.storeId },
-        { $inc: { pendingBalance: withdrawal.amount } }
-      );
+      if (withdrawal.subAgentId) {
+        const SubAgent = require('../../models/SubAgent');
+        await SubAgent.findOneAndUpdate(
+          { _id: withdrawal.subAgentId },
+          { $inc: { pendingBalance: withdrawal.amount } }
+        );
+      } else if (withdrawal.storeId) {
+        await Store.findOneAndUpdate(
+          { _id: withdrawal.storeId },
+          { $inc: { pendingBalance: withdrawal.amount } }
+        );
+      }
     }
 
     await withdrawal.save();
