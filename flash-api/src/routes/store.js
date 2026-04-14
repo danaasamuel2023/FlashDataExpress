@@ -2,6 +2,8 @@ const router = require('express').Router();
 const auth = require('../middleware/auth');
 const Store = require('../models/Store');
 const StoreProduct = require('../models/StoreProduct');
+const SubAgent = require('../models/SubAgent');
+const SubAgentProduct = require('../models/SubAgentProduct');
 const DataPurchase = require('../models/DataPurchase');
 const Settings = require('../models/Settings');
 const paystackService = require('../services/paystackService');
@@ -235,6 +237,25 @@ router.put('/products', auth, async (req, res) => {
     }
 
     const updated = await StoreProduct.find({ storeId: store._id });
+
+    // Cascade parent's selling price → sub-agents' basePrice (their cost)
+    const subAgents = await SubAgent.find({ storeId: store._id, status: 'registered' }).select('_id');
+    if (subAgents.length > 0) {
+      const subAgentIds = subAgents.map(s => s._id);
+      const subOps = [];
+      for (const p of updated) {
+        subOps.push({
+          updateMany: {
+            filter: { subAgentId: { $in: subAgentIds }, network: p.network, capacity: p.capacity },
+            update: { $set: { basePrice: p.sellingPrice } },
+          },
+        });
+      }
+      if (subOps.length > 0) {
+        await SubAgentProduct.bulkWrite(subOps);
+      }
+    }
+
     res.json({ status: 'success', data: updated });
   } catch (err) {
     console.error('Store error:', err.message);

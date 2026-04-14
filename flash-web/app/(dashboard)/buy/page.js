@@ -71,6 +71,7 @@ export default function BuyDataPage() {
       setSelectedBundle(null);
     } else {
       setSelectedBundle(pkg);
+      setPhoneNumber('');
       setErrorMessage('');
     }
   };

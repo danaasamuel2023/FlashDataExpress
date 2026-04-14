@@ -103,6 +103,7 @@ export default function PublicStorePage({ params }) {
       setSelectedBundle(null);
     } else {
       setSelectedBundle(pkg);
+      setPhoneNumber('');
     }
   };
 
