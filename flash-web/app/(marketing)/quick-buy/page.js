@@ -391,6 +391,7 @@ function GuestBuyContent() {
       setSelectedBundle(null);
     } else {
       setSelectedBundle(pkg);
+      setPhoneNumber('');
       setErrorMessage('');
     }
   };

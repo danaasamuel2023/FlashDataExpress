@@ -103,6 +103,7 @@ export default function SubAgentShopPage({ params }) {
       setSelectedBundle(null);
     } else {
       setSelectedBundle(pkg);
+      setPhoneNumber('');
     }
   };
 
