@@ -106,31 +106,7 @@ router.post('/datamart', verifyDatamartSignature, async (req, res) => {
       purchase.status = 'failed';
       purchase.failureReason = message || 'Order failed via webhook';
       await purchase.save();
-
-      // Refund for direct purchases (wallet users)
-      if (purchase.purchaseSource === 'direct') {
-        const user = await User.findOneAndUpdate(
-          { _id: purchase.userId },
-          { $inc: { walletBalance: purchase.price } },
-          { new: true }
-        );
-
-        if (user) {
-          await Transaction.create({
-            userId: purchase.userId,
-            type: 'refund',
-            amount: purchase.price,
-            balanceBefore: user.walletBalance - purchase.price,
-            balanceAfter: user.walletBalance,
-            status: 'completed',
-            reference: generateReference('RFD'),
-            description: `Auto-refund: failed ${purchase.capacity}GB ${purchase.network} order`,
-          });
-        }
-      }
-
-      // For store purchases where payment was already collected,
-      // the admin handles refunds manually since customer paid via Paystack
+      // Refunds handled manually by admin
     } else if (newStatus === 'processing' || newStatus === 'pending') {
       purchase.status = 'processing';
       await purchase.save();
