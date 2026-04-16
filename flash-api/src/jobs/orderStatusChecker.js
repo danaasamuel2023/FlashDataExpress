@@ -70,27 +70,7 @@ async function checkPendingOrders() {
         } else if (newStatus === 'failed' || newStatus === 'rejected') {
           order.status = 'failed';
           await order.save();
-
-          // Refund for direct purchases
-          if (order.purchaseSource === 'direct') {
-            const user = await User.findOneAndUpdate(
-              { _id: order.userId },
-              { $inc: { walletBalance: order.price } },
-              { new: true }
-            );
-            if (user) {
-              await Transaction.create({
-                userId: order.userId,
-                type: 'refund',
-                amount: order.price,
-                balanceBefore: user.walletBalance - order.price,
-                balanceAfter: user.walletBalance,
-                status: 'completed',
-                reference: generateReference('RFD'),
-                description: `Auto-refund: failed ${order.capacity}GB ${order.network} order`,
-              });
-            }
-          }
+          // Refunds handled manually by admin
         }
       } catch (err) {
         // Skip individual order errors
