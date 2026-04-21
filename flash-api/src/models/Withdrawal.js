@@ -43,7 +43,10 @@ const WithdrawalSchema = new mongoose.Schema({
   },
   processedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
   processedAt: Date,
-  rejectionReason: String
+  rejectionReason: String,
+  paystackRecipientCode: String,
+  paystackTransferCode: String,
+  paystackTransferStatus: String
 }, {
   timestamps: true
 });

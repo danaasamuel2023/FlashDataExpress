@@ -44,6 +44,7 @@ class ReferralService {
         status: 'completed',
         reference: generateReference('REF'),
         description: `Referral commission from ${user.name}`,
+        metadata: { source: 'referral', referredUserId: purchaseUserId, purchaseId, commissionPercent },
       });
 
       // Create earning record

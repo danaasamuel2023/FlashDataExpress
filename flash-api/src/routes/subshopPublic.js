@@ -9,6 +9,8 @@ const Settings = require('../models/Settings');
 const paystackService = require('../services/paystackService');
 const datamartService = require('../services/datamartService');
 const { generateReference } = require('../utils/helpers');
+const { refundFailedPurchase } = require('../utils/refund');
+const ordersPaused = require('../middleware/ordersPaused');
 
 // GET /api/subshop/:slug — Get sub-agent store info (public)
 router.get('/:slug', async (req, res) => {
@@ -65,7 +67,7 @@ router.get('/:slug/products', async (req, res) => {
 });
 
 // POST /api/subshop/:slug/buy — Customer initiates purchase from sub-agent store
-router.post('/:slug/buy', async (req, res) => {
+router.post('/:slug/buy', ordersPaused, async (req, res) => {
   try {
     const { network, capacity, phoneNumber } = req.body;
     if (!network || !capacity || !phoneNumber) {
@@ -248,6 +250,11 @@ router.get('/:slug/verify-payment', async (req, res) => {
       purchase.status = 'failed';
       purchase.failureReason = err.message;
       await purchase.save();
+      try {
+        await refundFailedPurchase(purchase, err.message);
+      } catch (refundErr) {
+        console.error('SubShop auto-refund failed:', refundErr.message, 'ref:', purchase.reference);
+      }
     }
 
     res.json({ status: 'success', data: purchase });

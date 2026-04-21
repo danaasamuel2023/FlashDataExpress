@@ -8,6 +8,7 @@ const Transaction = require('../models/Transaction');
 const Settings = require('../models/Settings');
 const paystackService = require('../services/paystackService');
 const { generateReference } = require('../utils/helpers');
+const { refundFailedPurchase } = require('../utils/refund');
 
 // Verify DataMart webhook signature
 async function verifyDatamartSignature(req, res, next) {
@@ -103,10 +104,15 @@ router.post('/datamart', verifyDatamartSignature, async (req, res) => {
       }
 
     } else if (newStatus === 'failed' || newStatus === 'rejected' || newStatus === 'cancelled') {
+      const failureReason = message || 'Order failed via webhook';
       purchase.status = 'failed';
-      purchase.failureReason = message || 'Order failed via webhook';
+      purchase.failureReason = failureReason;
       await purchase.save();
-      // Refunds handled manually by admin
+      try {
+        await refundFailedPurchase(purchase, failureReason);
+      } catch (err) {
+        console.error('Auto-refund failed:', err.message, 'ref:', purchase.reference);
+      }
     } else if (newStatus === 'processing' || newStatus === 'pending') {
       purchase.status = 'processing';
       await purchase.save();
@@ -150,10 +156,52 @@ async function verifyPaystackSignature(req, res, next) {
 }
 
 // POST /api/webhook/paystack - Paystack payment webhook
-// Handles wallet deposits and store purchases
+// Handles wallet deposits, store purchases, and outbound transfers (withdrawals).
 router.post('/paystack', verifyPaystackSignature, async (req, res) => {
   try {
     const { event, data } = req.body;
+
+    // Transfer (withdrawal payout) events
+    if (event === 'transfer.success' || event === 'transfer.failed' || event === 'transfer.reversed') {
+      const Store = require('../models/Store');
+      const SubAgent = require('../models/SubAgent');
+      const Withdrawal = require('../models/Withdrawal');
+      const transferRef = data?.reference;
+      const transferCode = data?.transfer_code;
+      const query = transferRef
+        ? { reference: transferRef }
+        : transferCode
+          ? { paystackTransferCode: transferCode }
+          : null;
+      if (!query) return res.json({ status: 'success', message: 'No transfer ref on event' });
+      const withdrawal = await Withdrawal.findOne(query);
+      if (!withdrawal) return res.json({ status: 'success', message: 'Withdrawal not found' });
+
+      withdrawal.paystackTransferStatus = (data?.status || event).toLowerCase();
+
+      if (event === 'transfer.success') {
+        withdrawal.status = 'completed';
+      } else {
+        // failed or reversed — refund the pending balance so the agent can retry
+        if (withdrawal.status !== 'rejected' && withdrawal.status !== 'pending') {
+          if (withdrawal.subAgentId) {
+            await SubAgent.findOneAndUpdate(
+              { _id: withdrawal.subAgentId },
+              { $inc: { pendingBalance: withdrawal.amount } }
+            );
+          } else if (withdrawal.storeId) {
+            await Store.findOneAndUpdate(
+              { _id: withdrawal.storeId },
+              { $inc: { pendingBalance: withdrawal.amount } }
+            );
+          }
+        }
+        withdrawal.status = 'rejected';
+        withdrawal.rejectionReason = data?.reason || data?.failures?.[0]?.message || `Paystack ${event}`;
+      }
+      await withdrawal.save();
+      return res.json({ status: 'success', message: 'Transfer event processed' });
+    }
 
     // Only handle successful charges
     if (event !== 'charge.success') {
@@ -256,7 +304,13 @@ router.post('/paystack', verifyPaystackSignature, async (req, res) => {
         purchase.status = 'failed';
         purchase.failureReason = err.message;
         await purchase.save();
-        // No wallet refund needed — money was paid via MoMo, admin handles refund
+        // MoMo was already captured by Paystack — credit the value to the
+        // user's wallet as an auto-refund.
+        try {
+          await refundFailedPurchase(purchase, err.message);
+        } catch (refundErr) {
+          console.error('MoMo auto-refund failed:', refundErr.message, 'ref:', purchase.reference);
+        }
       }
 
       // Process referral commission

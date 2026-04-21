@@ -29,6 +29,69 @@ router.get('/transactions', auth, async (req, res) => {
   }
 });
 
+// GET /api/wallet/daily-history — rolling daily breakdown (default 7 days)
+router.get('/daily-history', auth, async (req, res) => {
+  try {
+    const days = Math.min(31, Math.max(1, parseInt(req.query.days, 10) || 7));
+    const startDate = new Date();
+    startDate.setHours(0, 0, 0, 0);
+    startDate.setDate(startDate.getDate() - (days - 1));
+
+    const txs = await Transaction.find({
+      userId: req.user._id,
+      createdAt: { $gte: startDate },
+    }).sort({ createdAt: -1 }).lean();
+
+    const buckets = {};
+    for (let i = 0; i < days; i++) {
+      const d = new Date(startDate);
+      d.setDate(startDate.getDate() + i);
+      const key = d.toISOString().slice(0, 10);
+      buckets[key] = {
+        date: key,
+        deposits: 0, depositCount: 0,
+        purchases: 0, purchaseCount: 0,
+        refunds: 0, refundCount: 0,
+        withdrawals: 0, withdrawalCount: 0,
+        referrals: 0, referralCount: 0,
+        transactions: [],
+      };
+    }
+
+    for (const tx of txs) {
+      const key = new Date(tx.createdAt).toISOString().slice(0, 10);
+      const bucket = buckets[key];
+      if (!bucket) continue;
+      bucket.transactions.push(tx);
+      if (tx.status !== 'completed') continue;
+      if (tx.type === 'deposit') { bucket.deposits += tx.amount; bucket.depositCount += 1; }
+      else if (tx.type === 'purchase') { bucket.purchases += tx.amount; bucket.purchaseCount += 1; }
+      else if (tx.type === 'refund') { bucket.refunds += tx.amount; bucket.refundCount += 1; }
+      else if (tx.type === 'withdrawal') { bucket.withdrawals += tx.amount; bucket.withdrawalCount += 1; }
+      else if (tx.type === 'referral_earning') { bucket.referrals += tx.amount; bucket.referralCount += 1; }
+    }
+
+    const daysList = Object.values(buckets).sort((a, b) => b.date.localeCompare(a.date));
+
+    res.json({
+      status: 'success',
+      data: {
+        days: daysList,
+        weekTotal: {
+          deposits: daysList.reduce((s, d) => s + d.deposits, 0),
+          purchases: daysList.reduce((s, d) => s + d.purchases, 0),
+          refunds: daysList.reduce((s, d) => s + d.refunds, 0),
+          withdrawals: daysList.reduce((s, d) => s + d.withdrawals, 0),
+          referrals: daysList.reduce((s, d) => s + d.referrals, 0),
+        },
+      },
+    });
+  } catch (err) {
+    console.error('Wallet daily-history error:', err.message);
+    res.status(500).json({ status: 'error', message: 'Something went wrong. Please try again.' });
+  }
+});
+
 // POST /api/wallet/deposit
 router.post('/deposit', auth, async (req, res) => {
   try {
@@ -59,6 +122,7 @@ router.post('/deposit', auth, async (req, res) => {
       reference,
       gateway: 'paystack',
       description: `Wallet deposit of GH₵${value.toFixed(2)} (fee: GH₵${fee.toFixed(2)})`,
+      metadata: { source: 'wallet_deposit', fee },
     });
 
     const callbackUrl = `${process.env.FRONTEND_URL || 'http://localhost:3000'}/payment/callback`;

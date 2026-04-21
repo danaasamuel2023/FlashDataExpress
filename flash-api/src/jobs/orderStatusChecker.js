@@ -6,6 +6,7 @@ const Transaction = require('../models/Transaction');
 const datamartService = require('../services/datamartService');
 // All purchases go through DataMart
 const { generateReference } = require('../utils/helpers');
+const { refundFailedPurchase } = require('../utils/refund');
 
 async function checkPendingOrders() {
   try {
@@ -68,9 +69,15 @@ async function checkPendingOrders() {
             await order.save();
           }
         } else if (newStatus === 'failed' || newStatus === 'rejected') {
+          const failureReason = result.message || 'Order failed at provider';
           order.status = 'failed';
+          order.failureReason = failureReason;
           await order.save();
-          // Refunds handled manually by admin
+          try {
+            await refundFailedPurchase(order, failureReason);
+          } catch (refundErr) {
+            console.error('Auto-refund failed in status checker:', refundErr.message, 'ref:', order.reference);
+          }
         }
       } catch (err) {
         // Skip individual order errors

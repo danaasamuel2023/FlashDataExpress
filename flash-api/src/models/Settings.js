@@ -21,6 +21,9 @@ const SettingsSchema = new mongoose.Schema({
   paystack: {
     secretKey: { type: String, default: '' },
     publicKey: { type: String, default: '' },
+    // Encrypted Paystack secret for transfers/payouts. Always stored as
+    // AES-256-GCM ciphertext; admin endpoints return only a masked view.
+    transferKey: { type: String, default: '' },
     feePercent: { type: Number, default: 1.95 }
   },
   pricing: {
@@ -61,6 +64,8 @@ const SettingsSchema = new mongoose.Schema({
     whatsapp: { type: String, default: '' },
   },
   maintenanceMode: { type: Boolean, default: false },
+  ordersPaused: { type: Boolean, default: false },
+  ordersPausedMessage: { type: String, default: 'Orders are temporarily paused by admin. Please try again shortly.' },
   updatedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
   updatedAt: { type: Date, default: Date.now }
 });
