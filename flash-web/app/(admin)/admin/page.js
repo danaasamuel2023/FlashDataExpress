@@ -1,6 +1,7 @@
 'use client';
 import { useState, useEffect } from 'react';
-import { Users, ShoppingBag, Wallet, TrendingUp, Loader2, RefreshCw, DollarSign, CalendarDays } from 'lucide-react';
+import { Users, ShoppingBag, Wallet, TrendingUp, Loader2, RefreshCw, DollarSign, CalendarDays, Pause, Play, AlertTriangle } from 'lucide-react';
+import toast from 'react-hot-toast';
 import Card from '@/components/ui/Card';
 import { formatCurrency, formatDate, NETWORKS } from '@/lib/constants';
 import api from '@/lib/api';
@@ -14,11 +15,39 @@ export default function AdminOverviewPage() {
   const [fetchingPrices, setFetchingPrices] = useState(false);
   const [dailySales, setDailySales] = useState(null);
   const [loadingDaily, setLoadingDaily] = useState(false);
+  const [ordersPaused, setOrdersPaused] = useState(false);
+  const [pauseMessage, setPauseMessage] = useState('');
+  const [togglingPause, setTogglingPause] = useState(false);
 
   useEffect(() => {
     fetchStats();
     fetchDailySales();
+    fetchOrdersStatus();
   }, []);
+
+  const fetchOrdersStatus = async () => {
+    try {
+      const res = await api.get('/admin/settings');
+      setOrdersPaused(!!res.data.data?.ordersPaused);
+      setPauseMessage(res.data.data?.ordersPausedMessage || '');
+    } catch {
+      // silently fail
+    }
+  };
+
+  const handleTogglePause = async () => {
+    setTogglingPause(true);
+    const next = !ordersPaused;
+    try {
+      await api.post('/admin/orders/pause', { paused: next, message: pauseMessage });
+      setOrdersPaused(next);
+      toast.success(next ? 'Orders paused' : 'Orders resumed');
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Failed to update');
+    } finally {
+      setTogglingPause(false);
+    }
+  };
 
   const fetchStats = async () => {
     try {
@@ -87,6 +116,47 @@ export default function AdminOverviewPage() {
         <h1 className="text-2xl font-extrabold text-white tracking-tight">Admin Overview</h1>
         <p className="text-text-muted text-sm mt-1">Platform stats at a glance.</p>
       </div>
+
+      {/* Orders pause control */}
+      <Card className={ordersPaused ? '!border-error/40 !bg-error/5' : ''}>
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+          <div className="flex items-start gap-3">
+            <div className={`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 ${ordersPaused ? 'bg-error/10' : 'bg-success/10'}`}>
+              {ordersPaused ? <AlertTriangle className="w-5 h-5 text-error" /> : <Play className="w-5 h-5 text-success" />}
+            </div>
+            <div className="flex-1">
+              <p className="font-bold text-white">
+                {ordersPaused ? 'Orders are PAUSED' : 'Orders are accepting normally'}
+              </p>
+              <p className="text-xs text-text-muted mt-0.5">
+                {ordersPaused
+                  ? 'Customers cannot place new orders. Existing orders continue.'
+                  : 'Pause to stop new orders (e.g., during DataMart issues).'}
+              </p>
+              {ordersPaused && (
+                <input
+                  value={pauseMessage}
+                  onChange={(e) => setPauseMessage(e.target.value)}
+                  placeholder="Message shown to customers (optional)"
+                  className="mt-2 w-full px-3 py-2 bg-surface-light border border-white/10 rounded-lg text-white text-xs focus:border-primary focus:outline-none"
+                />
+              )}
+            </div>
+          </div>
+          <button
+            onClick={handleTogglePause}
+            disabled={togglingPause}
+            className={`flex items-center justify-center gap-2 px-4 py-2 rounded-lg font-bold text-sm transition-colors disabled:opacity-50 ${
+              ordersPaused
+                ? 'bg-success hover:bg-success/90 text-white'
+                : 'bg-error hover:bg-error/90 text-white'
+            }`}
+          >
+            {togglingPause ? <Loader2 className="w-4 h-4 animate-spin" /> : (ordersPaused ? <Play className="w-4 h-4" /> : <Pause className="w-4 h-4" />)}
+            {ordersPaused ? 'Resume orders' : 'Pause orders'}
+          </button>
+        </div>
+      </Card>
 
       {/* Today's stats */}
       <div>

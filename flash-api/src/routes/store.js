@@ -5,6 +5,8 @@ const StoreProduct = require('../models/StoreProduct');
 const SubAgent = require('../models/SubAgent');
 const SubAgentProduct = require('../models/SubAgentProduct');
 const DataPurchase = require('../models/DataPurchase');
+const Transaction = require('../models/Transaction');
+const User = require('../models/User');
 const Settings = require('../models/Settings');
 const paystackService = require('../services/paystackService');
 const { generateReference } = require('../utils/helpers');
@@ -94,6 +96,29 @@ router.get('/verify-activation', auth, async (req, res) => {
       theme: meta.theme,
       momoDetails: meta.momoDetails,
     });
+
+    // Record the activation as a transaction so it shows in admin/user history.
+    // Balance is unchanged because payment was made directly via Paystack.
+    try {
+      const agent = await User.findById(req.user._id).select('walletBalance');
+      const existingTx = await Transaction.findOne({ reference });
+      if (!existingTx) {
+        await Transaction.create({
+          userId: req.user._id,
+          type: 'purchase',
+          amount: STORE_ACTIVATION_FEE,
+          balanceBefore: agent?.walletBalance || 0,
+          balanceAfter: agent?.walletBalance || 0,
+          status: 'completed',
+          reference,
+          gateway: 'paystack',
+          description: `Store activation: ${meta.storeName}`,
+          metadata: { source: 'store_activation', storeId: store._id, storeName: meta.storeName },
+        });
+      }
+    } catch (txErr) {
+      console.error('Store activation transaction log failed:', txErr.message);
+    }
 
     res.status(201).json({ status: 'success', data: store });
   } catch (err) {

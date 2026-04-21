@@ -275,4 +275,20 @@ router.get('/agent-support', async (req, res) => {
   }
 });
 
+// GET /api/auth/orders-status — Public: whether orders are currently paused
+router.get('/orders-status', async (req, res) => {
+  try {
+    const settings = await Settings.getSettings();
+    res.json({
+      status: 'success',
+      data: {
+        ordersPaused: !!settings?.ordersPaused,
+        message: settings?.ordersPausedMessage || '',
+      },
+    });
+  } catch (err) {
+    res.status(500).json({ status: 'error', message: 'Failed to load orders status' });
+  }
+});
+
 module.exports = router;

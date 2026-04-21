@@ -1,5 +1,6 @@
 const router = require('express').Router();
 const auth = require('../middleware/auth');
+const ordersPaused = require('../middleware/ordersPaused');
 const User = require('../models/User');
 const Transaction = require('../models/Transaction');
 const DataPurchase = require('../models/DataPurchase');
@@ -9,6 +10,7 @@ const datamartService = require('../services/datamartService');
 const paystackService = require('../services/paystackService');
 const referralService = require('../services/referralService');
 const { generateReference, formatPhone, validateGhanaPhone } = require('../utils/helpers');
+const { refundFailedPurchase } = require('../utils/refund');
 
 const VALID_NETWORKS = ['YELLO', 'TELECEL', 'AT_PREMIUM'];
 
@@ -46,7 +48,7 @@ router.get('/guest-packages', async (req, res) => {
 });
 
 // POST /api/purchase/guest-buy - Public, no auth, MoMo only
-router.post('/guest-buy', async (req, res) => {
+router.post('/guest-buy', ordersPaused, async (req, res) => {
   try {
     const { network, capacity, phoneNumber, email } = req.body;
     if (!network || !capacity || !phoneNumber) {
@@ -152,7 +154,7 @@ router.get('/packages', auth, async (req, res) => {
 });
 
 // POST /api/purchase/buy
-router.post('/buy', auth, async (req, res) => {
+router.post('/buy', auth, ordersPaused, async (req, res) => {
   try {
     const { network, capacity, phoneNumber } = req.body;
     if (!network || !capacity || !phoneNumber) {
@@ -205,6 +207,7 @@ router.post('/buy', auth, async (req, res) => {
       status: 'completed',
       reference,
       description: `${capacity}GB ${network} data to ${phoneNumber}`,
+      metadata: { source: 'direct_purchase', network, capacity, phoneNumber },
     });
 
     // Create purchase record
@@ -232,21 +235,11 @@ router.post('/buy', auth, async (req, res) => {
       purchase.status = 'failed';
       purchase.failureReason = providerMessage;
       await purchase.save();
-      // Refund
-      await User.findOneAndUpdate(
-        { _id: user._id },
-        { $inc: { walletBalance: price } }
-      );
-      await Transaction.create({
-        userId: user._id,
-        type: 'refund',
-        amount: price,
-        balanceBefore: updatedUser.walletBalance,
-        balanceAfter: updatedUser.walletBalance + price,
-        status: 'completed',
-        reference: generateReference('RFD'),
-        description: `Refund for failed ${capacity}GB ${network} purchase`,
-      });
+      try {
+        await refundFailedPurchase(purchase, providerMessage);
+      } catch (refundErr) {
+        console.error('Direct /buy refund failed:', refundErr.message, 'ref:', purchase.reference);
+      }
       return res.status(500).json({ status: 'error', message: `Purchase failed: ${providerMessage}. Your balance has been refunded.` });
     }
 
@@ -261,7 +254,7 @@ router.post('/buy', auth, async (req, res) => {
 });
 
 // POST /api/purchase/buy-with-momo - Pay directly with MoMo via Paystack
-router.post('/buy-with-momo', auth, async (req, res) => {
+router.post('/buy-with-momo', auth, ordersPaused, async (req, res) => {
   try {
     const { network, capacity, phoneNumber } = req.body;
     if (!network || !capacity || !phoneNumber) {
@@ -301,6 +294,7 @@ router.post('/buy-with-momo', auth, async (req, res) => {
       reference,
       gateway: 'paystack',
       description: `${capacity}GB ${network} data to ${phoneNumber} (MoMo)`,
+      metadata: { source: 'momo_purchase', network, capacity, phoneNumber },
     });
 
     // Initialize Paystack payment

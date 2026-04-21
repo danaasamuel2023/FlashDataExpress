@@ -105,64 +105,17 @@ export default function StoreDashboardPage() {
         </div>
       </div>
 
-      {/* Stats */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <Card>
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-primary/10 rounded-xl flex items-center justify-center">
-              <ShoppingBag className="w-5 h-5 text-primary" />
-            </div>
-            <div>
-              <p className="text-xl font-extrabold text-white">{store.totalSales || 0}</p>
-              <p className="text-xs text-text-muted">Total Sales</p>
-            </div>
-          </div>
-        </Card>
-        <Card>
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-success/10 rounded-xl flex items-center justify-center">
-              <TrendingUp className="w-5 h-5 text-success" />
-            </div>
-            <div>
-              <p className="text-xl font-extrabold text-white">{formatCurrency(store.totalEarnings || 0)}</p>
-              <p className="text-xs text-text-muted">Total Earnings</p>
-            </div>
-          </div>
-        </Card>
-        <Card>
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-accent/10 rounded-xl flex items-center justify-center">
-              <Wallet className="w-5 h-5 text-accent" />
-            </div>
-            <div>
-              <p className="text-xl font-extrabold text-white">{formatCurrency(store.pendingBalance || 0)}</p>
-              <p className="text-xs text-text-muted">Pending Balance</p>
-            </div>
-          </div>
-        </Card>
-        <Card>
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-blue-500/10 rounded-xl flex items-center justify-center">
-              <Store className="w-5 h-5 text-blue-500" />
-            </div>
-            <div>
-              <p className="text-xl font-extrabold text-white">{store.isActive ? 'Active' : 'Inactive'}</p>
-              <p className="text-xs text-text-muted">Store Status</p>
-            </div>
-          </div>
-        </Card>
-      </div>
-
-      {/* Today's summary */}
-      {dailySales && (
-        <div className="grid grid-cols-3 gap-4">
+      {/* Today's stats — reset at midnight */}
+      <div>
+        <p className="text-xs font-bold text-text-muted uppercase tracking-wider mb-2">Today</p>
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
           <Card>
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 bg-primary/10 rounded-xl flex items-center justify-center">
-                <CalendarDays className="w-5 h-5 text-primary" />
+                <ShoppingBag className="w-5 h-5 text-primary" />
               </div>
               <div>
-                <p className="text-xl font-extrabold text-white">{dailySales.count}</p>
+                <p className="text-xl font-extrabold text-white">{dailySales?.count ?? 0}</p>
                 <p className="text-xs text-text-muted">Today&apos;s Sales</p>
               </div>
             </div>
@@ -170,10 +123,10 @@ export default function StoreDashboardPage() {
           <Card>
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 bg-accent/10 rounded-xl flex items-center justify-center">
-                <ShoppingBag className="w-5 h-5 text-accent" />
+                <CalendarDays className="w-5 h-5 text-accent" />
               </div>
               <div>
-                <p className="text-xl font-extrabold text-white">{formatCurrency(dailySales.todayRevenue)}</p>
+                <p className="text-xl font-extrabold text-white">{formatCurrency(dailySales?.todayRevenue || 0)}</p>
                 <p className="text-xs text-text-muted">Today&apos;s Revenue</p>
               </div>
             </div>
@@ -184,13 +137,64 @@ export default function StoreDashboardPage() {
                 <DollarSign className="w-5 h-5 text-success" />
               </div>
               <div>
-                <p className="text-xl font-extrabold text-white">{formatCurrency(dailySales.todayProfit)}</p>
+                <p className="text-xl font-extrabold text-white">{formatCurrency(dailySales?.todayProfit || 0)}</p>
                 <p className="text-xs text-text-muted">Today&apos;s Profit</p>
               </div>
             </div>
           </Card>
+          <Card>
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 bg-blue-500/10 rounded-xl flex items-center justify-center">
+                <Store className="w-5 h-5 text-blue-500" />
+              </div>
+              <div>
+                <p className="text-xl font-extrabold text-white">{store.isActive ? 'Active' : 'Inactive'}</p>
+                <p className="text-xs text-text-muted">Store Status</p>
+              </div>
+            </div>
+          </Card>
         </div>
-      )}
+      </div>
+
+      {/* Lifetime totals — kept for reference */}
+      <div>
+        <p className="text-xs font-bold text-text-muted uppercase tracking-wider mb-2">All Time</p>
+        <div className="grid grid-cols-3 gap-4">
+          <Card>
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 bg-primary/10 rounded-xl flex items-center justify-center">
+                <ShoppingBag className="w-5 h-5 text-primary" />
+              </div>
+              <div>
+                <p className="text-lg font-extrabold text-white">{store.totalSales || 0}</p>
+                <p className="text-xs text-text-muted">Total Sales</p>
+              </div>
+            </div>
+          </Card>
+          <Card>
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 bg-success/10 rounded-xl flex items-center justify-center">
+                <TrendingUp className="w-5 h-5 text-success" />
+              </div>
+              <div>
+                <p className="text-lg font-extrabold text-white">{formatCurrency(store.totalEarnings || 0)}</p>
+                <p className="text-xs text-text-muted">Total Earnings</p>
+              </div>
+            </div>
+          </Card>
+          <Card>
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 bg-accent/10 rounded-xl flex items-center justify-center">
+                <Wallet className="w-5 h-5 text-accent" />
+              </div>
+              <div>
+                <p className="text-lg font-extrabold text-white">{formatCurrency(store.pendingBalance || 0)}</p>
+                <p className="text-xs text-text-muted">Pending Balance</p>
+              </div>
+            </div>
+          </Card>
+        </div>
+      </div>
 
       {/* Today's Sales History */}
       {store && (

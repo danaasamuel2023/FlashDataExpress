@@ -132,86 +132,96 @@ export default function SubAgentDashboardPage() {
       </div>
 
       <div className="max-w-5xl mx-auto px-4 py-6 space-y-6">
-        {/* Stats */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-          <div className="bg-gray-900 border border-gray-800 rounded-xl p-4">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 bg-amber-500/10 rounded-xl flex items-center justify-center">
-                <ShoppingBag className="w-5 h-5 text-amber-400" />
-              </div>
-              <div>
-                <p className="text-xl font-extrabold text-white">{subAgent.totalSales || 0}</p>
-                <p className="text-xs text-gray-500">Total Sales</p>
-              </div>
-            </div>
-          </div>
-          <div className="bg-gray-900 border border-gray-800 rounded-xl p-4">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 bg-green-500/10 rounded-xl flex items-center justify-center">
-                <DollarSign className="w-5 h-5 text-green-400" />
-              </div>
-              <div>
-                <p className="text-xl font-extrabold text-white">{formatCurrency(subAgent.totalEarnings || 0)}</p>
-                <p className="text-xs text-gray-500">Total Earnings</p>
+        {/* Today's stats — reset at midnight */}
+        <div>
+          <p className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-2">Today</p>
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="bg-gray-900 border border-gray-800 rounded-xl p-4">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 bg-amber-500/10 rounded-xl flex items-center justify-center">
+                  <ShoppingBag className="w-5 h-5 text-amber-400" />
+                </div>
+                <div>
+                  <p className="text-xl font-extrabold text-white">{dailySales?.count ?? 0}</p>
+                  <p className="text-xs text-gray-500">Today&apos;s Sales</p>
+                </div>
               </div>
             </div>
-          </div>
-          <div className="bg-gray-900 border border-gray-800 rounded-xl p-4">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 bg-blue-500/10 rounded-xl flex items-center justify-center">
-                <BarChart3 className="w-5 h-5 text-blue-400" />
-              </div>
-              <div>
-                <p className="text-xl font-extrabold text-white">{formatCurrency(subAgent.pendingBalance || 0)}</p>
-                <p className="text-xs text-gray-500">Pending Balance</p>
+            <div className="bg-gray-900 border border-gray-800 rounded-xl p-4">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 bg-blue-500/10 rounded-xl flex items-center justify-center">
+                  <CalendarDays className="w-5 h-5 text-blue-400" />
+                </div>
+                <div>
+                  <p className="text-xl font-extrabold text-white">{formatCurrency(dailySales?.todayRevenue || 0)}</p>
+                  <p className="text-xs text-gray-500">Today&apos;s Revenue</p>
+                </div>
               </div>
             </div>
-          </div>
-          <div className="bg-gray-900 border border-gray-800 rounded-xl p-4">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 bg-purple-500/10 rounded-xl flex items-center justify-center">
-                <ExternalLink className="w-5 h-5 text-purple-400" />
+            <div className="bg-gray-900 border border-gray-800 rounded-xl p-4">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 bg-green-500/10 rounded-xl flex items-center justify-center">
+                  <DollarSign className="w-5 h-5 text-green-400" />
+                </div>
+                <div>
+                  <p className="text-xl font-extrabold text-white">{formatCurrency(dailySales?.todayProfit || 0)}</p>
+                  <p className="text-xs text-gray-500">Today&apos;s Profit</p>
+                </div>
               </div>
-              <div>
-                <p className="text-sm font-bold text-white truncate">{subAgent.storeSlug}</p>
-                <p className="text-xs text-gray-500">Agent Store</p>
+            </div>
+            <div className="bg-gray-900 border border-gray-800 rounded-xl p-4">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 bg-purple-500/10 rounded-xl flex items-center justify-center">
+                  <ExternalLink className="w-5 h-5 text-purple-400" />
+                </div>
+                <div>
+                  <p className="text-sm font-bold text-white truncate">{subAgent.storeSlug}</p>
+                  <p className="text-xs text-gray-500">Agent Store</p>
+                </div>
               </div>
             </div>
           </div>
         </div>
 
-        {/* Today's summary */}
-        {dailySales && (
-          <div className="grid grid-cols-3 gap-3">
-            <div className="bg-gray-900 border border-gray-800 rounded-xl p-3">
-              <div className="flex items-center gap-2">
-                <CalendarDays className="w-4 h-4 text-amber-400" />
+        {/* Lifetime totals */}
+        <div>
+          <p className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-2">All Time</p>
+          <div className="grid grid-cols-3 gap-4">
+            <div className="bg-gray-900 border border-gray-800 rounded-xl p-4">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 bg-amber-500/10 rounded-xl flex items-center justify-center">
+                  <ShoppingBag className="w-5 h-5 text-amber-400" />
+                </div>
                 <div>
-                  <p className="text-lg font-extrabold text-white">{dailySales.count}</p>
-                  <p className="text-[10px] text-gray-500">Today&apos;s Sales</p>
+                  <p className="text-lg font-extrabold text-white">{subAgent.totalSales || 0}</p>
+                  <p className="text-xs text-gray-500">Total Sales</p>
                 </div>
               </div>
             </div>
-            <div className="bg-gray-900 border border-gray-800 rounded-xl p-3">
-              <div className="flex items-center gap-2">
-                <ShoppingBag className="w-4 h-4 text-blue-400" />
+            <div className="bg-gray-900 border border-gray-800 rounded-xl p-4">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 bg-green-500/10 rounded-xl flex items-center justify-center">
+                  <DollarSign className="w-5 h-5 text-green-400" />
+                </div>
                 <div>
-                  <p className="text-lg font-extrabold text-white">{formatCurrency(dailySales.todayRevenue)}</p>
-                  <p className="text-[10px] text-gray-500">Today&apos;s Revenue</p>
+                  <p className="text-lg font-extrabold text-white">{formatCurrency(subAgent.totalEarnings || 0)}</p>
+                  <p className="text-xs text-gray-500">Total Earnings</p>
                 </div>
               </div>
             </div>
-            <div className="bg-gray-900 border border-gray-800 rounded-xl p-3">
-              <div className="flex items-center gap-2">
-                <DollarSign className="w-4 h-4 text-green-400" />
+            <div className="bg-gray-900 border border-gray-800 rounded-xl p-4">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 bg-blue-500/10 rounded-xl flex items-center justify-center">
+                  <BarChart3 className="w-5 h-5 text-blue-400" />
+                </div>
                 <div>
-                  <p className="text-lg font-extrabold text-white">{formatCurrency(dailySales.todayProfit)}</p>
-                  <p className="text-[10px] text-gray-500">Today&apos;s Profit</p>
+                  <p className="text-lg font-extrabold text-white">{formatCurrency(subAgent.pendingBalance || 0)}</p>
+                  <p className="text-xs text-gray-500">Pending Balance</p>
                 </div>
               </div>
             </div>
           </div>
-        )}
+        </div>
 
         {/* Today's Sales List */}
         {dailySales?.sales?.length > 0 && (

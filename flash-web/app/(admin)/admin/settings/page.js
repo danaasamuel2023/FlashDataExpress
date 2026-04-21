@@ -1,6 +1,6 @@
 'use client';
 import { useState, useEffect } from 'react';
-import { Settings, Key, Globe, CreditCard, Save, Loader2, CheckCircle, XCircle, Zap, Phone, MessageCircle } from 'lucide-react';
+import { Settings, Key, Globe, CreditCard, Save, Loader2, CheckCircle, XCircle, Zap, Phone, MessageCircle, Banknote, AlertTriangle } from 'lucide-react';
 import toast from 'react-hot-toast';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
@@ -12,11 +12,13 @@ export default function AdminSettingsPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
+  const [testingTransfer, setTestingTransfer] = useState(false);
   const [form, setForm] = useState({
     datamartApiUrl: '',
     datamartApiKey: '',
     paystackSecretKey: '',
     paystackPublicKey: '',
+    paystackTransferKey: '',
     smsApiKey: '',
     smsSenderId: '',
     withdrawalMinimum: '',
@@ -39,6 +41,7 @@ export default function AdminSettingsPage() {
         datamartApiKey: s?.datamart?.apiKey || '',
         paystackSecretKey: s?.paystack?.secretKey || '',
         paystackPublicKey: s?.paystack?.publicKey || '',
+        paystackTransferKey: '', // never prefilled — only shown masked
         smsApiKey: s?.sms?.apiKey || '',
         smsSenderId: s?.sms?.senderId || '',
         withdrawalMinimum: s?.withdrawal?.minimumAmount || '',
@@ -56,9 +59,19 @@ export default function AdminSettingsPage() {
   const handleSave = async () => {
     setSaving(true);
     try {
+      const paystackPayload = {
+        secretKey: form.paystackSecretKey,
+        publicKey: form.paystackPublicKey,
+      };
+      // Only send transferKey when the admin typed a new value. Empty string
+      // means "leave it alone"; the backend treats it that way.
+      if (form.paystackTransferKey && form.paystackTransferKey.trim()) {
+        paystackPayload.transferKey = form.paystackTransferKey.trim();
+      }
+
       await api.put('/admin/settings', {
         datamart: { apiUrl: form.datamartApiUrl, apiKey: form.datamartApiKey },
-        paystack: { secretKey: form.paystackSecretKey, publicKey: form.paystackPublicKey },
+        paystack: paystackPayload,
         sms: { apiKey: form.smsApiKey, senderId: form.smsSenderId },
         withdrawal: {
           minimumAmount: parseFloat(form.withdrawalMinimum) || 10,
@@ -70,11 +83,42 @@ export default function AdminSettingsPage() {
         },
       });
       toast.success('Settings saved!');
+      setForm(prev => ({ ...prev, paystackTransferKey: '' }));
       fetchSettings();
     } catch (err) {
       toast.error(err.response?.data?.message || 'Failed to save');
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleClearTransferKey = async () => {
+    if (!confirm('Remove the saved Paystack transfer key? Auto-payouts will stop working until you add a new one.')) return;
+    setSaving(true);
+    try {
+      await api.put('/admin/settings', { paystack: { transferKey: null } });
+      toast.success('Transfer key cleared');
+      fetchSettings();
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Failed');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleTestTransferKey = async () => {
+    setTestingTransfer(true);
+    try {
+      const res = await api.post('/admin/settings/test-transfer-key');
+      if (res.data.data?.connected) {
+        toast.success(`Transfer key works — ${res.data.data.banksFound} MoMo networks available`);
+      } else {
+        toast.error('Transfer key test failed');
+      }
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Test failed');
+    } finally {
+      setTestingTransfer(false);
     }
   };
 
@@ -188,6 +232,63 @@ export default function AdminSettingsPage() {
             value={form.paystackPublicKey}
             onChange={(e) => setForm(prev => ({ ...prev, paystackPublicKey: e.target.value }))}
           />
+        </div>
+      </Card>
+
+      {/* Paystack Transfer / Withdrawal key */}
+      <Card>
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 bg-purple-500/10 rounded-xl flex items-center justify-center">
+              <Banknote className="w-5 h-5 text-purple-500" />
+            </div>
+            <div>
+              <h2 className="font-bold text-white">Paystack Transfer Key</h2>
+              <p className="text-xs text-text-muted">Used to auto-pay agent withdrawals via Paystack. Stored encrypted; never shown in full.</p>
+            </div>
+          </div>
+          {settings?.paystack?.transferKeyConfigured ? (
+            <span className="flex items-center gap-1 text-xs font-semibold text-success">
+              <CheckCircle className="w-4 h-4" /> Configured
+            </span>
+          ) : (
+            <span className="flex items-center gap-1 text-xs font-semibold text-text-muted">
+              <XCircle className="w-4 h-4" /> Not set
+            </span>
+          )}
+        </div>
+        <div className="space-y-3">
+          {settings?.paystack?.transferKeyConfigured && (
+            <div className="flex items-center justify-between bg-surface-light rounded-lg px-3 py-2">
+              <div>
+                <p className="text-[10px] text-text-muted uppercase tracking-wider">Current key</p>
+                <p className="text-sm font-mono text-white">{settings.paystack.transferKeyMasked || '••••••••'}</p>
+              </div>
+              <div className="flex gap-2">
+                <Button variant="outline" size="sm" loading={testingTransfer} onClick={handleTestTransferKey}>
+                  Test
+                </Button>
+                <Button variant="danger" size="sm" onClick={handleClearTransferKey}>Clear</Button>
+              </div>
+            </div>
+          )}
+          <Input
+            label={settings?.paystack?.transferKeyConfigured ? 'Replace transfer key' : 'Transfer key'}
+            icon={Key}
+            type="password"
+            placeholder="sk_live_... (leave blank to keep existing)"
+            value={form.paystackTransferKey}
+            onChange={(e) => setForm(prev => ({ ...prev, paystackTransferKey: e.target.value }))}
+          />
+          <div className="flex items-start gap-2 text-xs text-text-muted bg-accent/5 border border-accent/20 rounded-lg p-3">
+            <AlertTriangle className="w-4 h-4 text-accent flex-shrink-0 mt-0.5" />
+            <div>
+              <p className="font-semibold text-text">How this works</p>
+              <p className="mt-1">
+                When an agent requests a withdrawal, clicking <span className="font-bold">Approve &amp; Pay</span> in the Withdrawals page will use this key to create a Paystack transfer to their MoMo number automatically. If the key is not set, approvals stay manual.
+              </p>
+            </div>
+          </div>
         </div>
       </Card>
 

@@ -9,6 +9,8 @@ const Withdrawal = require('../../models/Withdrawal');
 const { Referral } = require('../../models/Referral');
 const Settings = require('../../models/Settings');
 const datamartService = require('../../services/datamartService');
+const paystackService = require('../../services/paystackService');
+const { encrypt, mask, isConfigured } = require('../../utils/encryption');
 // All purchases go through DataMart
 
 // All admin routes require auth + admin
@@ -72,6 +74,83 @@ router.get('/dashboard', async (req, res) => {
     });
   } catch (err) {
     console.error('Admin error:', err.message);
+    res.status(500).json({ status: 'error', message: 'Something went wrong. Please try again.' });
+  }
+});
+
+// GET /api/admin/daily-history — rolling daily payment breakdown (default 7 days)
+router.get('/daily-history', async (req, res) => {
+  try {
+    const days = Math.min(31, Math.max(1, parseInt(req.query.days, 10) || 7));
+    const startDate = new Date();
+    startDate.setHours(0, 0, 0, 0);
+    startDate.setDate(startDate.getDate() - (days - 1));
+
+    const [txs, orders] = await Promise.all([
+      Transaction.find({ createdAt: { $gte: startDate } }).lean(),
+      DataPurchase.find({ createdAt: { $gte: startDate } }).lean(),
+    ]);
+
+    const buckets = {};
+    for (let i = 0; i < days; i++) {
+      const d = new Date(startDate);
+      d.setDate(startDate.getDate() + i);
+      const key = d.toISOString().slice(0, 10);
+      buckets[key] = {
+        date: key,
+        deposits: 0, depositCount: 0,
+        purchases: 0, purchaseCount: 0,
+        refunds: 0, refundCount: 0,
+        withdrawals: 0, withdrawalCount: 0,
+        orderRevenue: 0, orderCost: 0, orderCount: 0,
+        failedOrders: 0,
+      };
+    }
+
+    for (const tx of txs) {
+      const key = new Date(tx.createdAt).toISOString().slice(0, 10);
+      const bucket = buckets[key];
+      if (!bucket || tx.status !== 'completed') continue;
+      if (tx.type === 'deposit') { bucket.deposits += tx.amount; bucket.depositCount += 1; }
+      else if (tx.type === 'purchase') { bucket.purchases += tx.amount; bucket.purchaseCount += 1; }
+      else if (tx.type === 'refund') { bucket.refunds += tx.amount; bucket.refundCount += 1; }
+      else if (tx.type === 'withdrawal') { bucket.withdrawals += tx.amount; bucket.withdrawalCount += 1; }
+    }
+
+    for (const o of orders) {
+      const key = new Date(o.createdAt).toISOString().slice(0, 10);
+      const bucket = buckets[key];
+      if (!bucket) continue;
+      bucket.orderCount += 1;
+      if (['completed', 'processing', 'pending'].includes(o.status)) {
+        bucket.orderRevenue += o.price || 0;
+        bucket.orderCost += o.costPrice || 0;
+      }
+      if (o.status === 'failed' || o.status === 'refunded') bucket.failedOrders += 1;
+    }
+
+    const daysList = Object.values(buckets)
+      .map(b => ({ ...b, profit: Math.round((b.orderRevenue - b.orderCost) * 100) / 100 }))
+      .sort((a, b) => b.date.localeCompare(a.date));
+
+    res.json({
+      status: 'success',
+      data: {
+        days: daysList,
+        weekTotal: {
+          deposits: daysList.reduce((s, d) => s + d.deposits, 0),
+          purchases: daysList.reduce((s, d) => s + d.purchases, 0),
+          refunds: daysList.reduce((s, d) => s + d.refunds, 0),
+          withdrawals: daysList.reduce((s, d) => s + d.withdrawals, 0),
+          orderRevenue: daysList.reduce((s, d) => s + d.orderRevenue, 0),
+          profit: daysList.reduce((s, d) => s + d.profit, 0),
+          orderCount: daysList.reduce((s, d) => s + d.orderCount, 0),
+          failedOrders: daysList.reduce((s, d) => s + d.failedOrders, 0),
+        },
+      },
+    });
+  } catch (err) {
+    console.error('Admin daily-history error:', err.message);
     res.status(500).json({ status: 'error', message: 'Something went wrong. Please try again.' });
   }
 });
@@ -173,9 +252,12 @@ router.get('/withdrawals', async (req, res) => {
 });
 
 // PUT /api/admin/withdrawals/:id
+// Body: { status: 'completed' | 'rejected', rejectionReason?, mode?: 'auto' | 'manual' }
+//   - 'auto' (default when transfer key is set): initiate a Paystack transfer.
+//   - 'manual': mark completed without touching Paystack (admin paid out-of-band).
 router.put('/withdrawals/:id', async (req, res) => {
   try {
-    const { status, rejectionReason } = req.body;
+    const { status, rejectionReason, mode } = req.body;
     if (!['completed', 'rejected'].includes(status)) {
       return res.status(400).json({ status: 'error', message: 'Invalid status' });
     }
@@ -185,12 +267,11 @@ router.put('/withdrawals/:id', async (req, res) => {
       return res.status(400).json({ status: 'error', message: 'Withdrawal not found or already processed' });
     }
 
-    withdrawal.status = status;
-    withdrawal.processedBy = req.user._id;
-    if (rejectionReason) withdrawal.rejectionReason = rejectionReason;
-
-    // If rejected, refund the pending balance
     if (status === 'rejected') {
+      withdrawal.status = 'rejected';
+      withdrawal.processedBy = req.user._id;
+      withdrawal.processedAt = new Date();
+      if (rejectionReason) withdrawal.rejectionReason = rejectionReason;
       if (withdrawal.subAgentId) {
         const SubAgent = require('../../models/SubAgent');
         await SubAgent.findOneAndUpdate(
@@ -203,10 +284,60 @@ router.put('/withdrawals/:id', async (req, res) => {
           { $inc: { pendingBalance: withdrawal.amount } }
         );
       }
+      await withdrawal.save();
+      return res.json({ status: 'success', data: withdrawal });
     }
 
-    await withdrawal.save();
-    res.json({ status: 'success', data: withdrawal });
+    // status === 'completed'
+    const settings = await Settings.getSettings();
+    const keyConfigured = isConfigured(settings?.paystack?.transferKey || '');
+    const chosenMode = mode === 'manual' || !keyConfigured ? 'manual' : 'auto';
+
+    if (chosenMode === 'manual') {
+      withdrawal.status = 'completed';
+      withdrawal.processedBy = req.user._id;
+      withdrawal.processedAt = new Date();
+      await withdrawal.save();
+      return res.json({ status: 'success', data: withdrawal, mode: 'manual' });
+    }
+
+    // Auto payout via Paystack transfer
+    try {
+      const { recipient, transfer } = await paystackService.payoutToMomo({
+        name: withdrawal.momoDetails?.name || 'Agent',
+        accountNumber: withdrawal.momoDetails?.number,
+        network: withdrawal.momoDetails?.network,
+        amountGHS: withdrawal.netAmount,
+        reference: withdrawal.reference,
+        reason: `Withdrawal ${withdrawal.reference}`,
+      });
+
+      const transferStatus = (transfer?.status || '').toLowerCase();
+      // Paystack statuses: 'success' (completed), 'pending' (in-flight), 'otp' (requires OTP finalisation)
+      withdrawal.status = transferStatus === 'success' ? 'completed' : 'processing';
+      withdrawal.processedBy = req.user._id;
+      withdrawal.processedAt = new Date();
+      withdrawal.paystackRecipientCode = recipient?.recipient_code || '';
+      withdrawal.paystackTransferCode = transfer?.transfer_code || '';
+      withdrawal.paystackTransferStatus = transferStatus;
+      if (transferStatus === 'otp') {
+        withdrawal.rejectionReason = 'Paystack requires OTP finalisation on the sender account — complete it in the Paystack dashboard.';
+      }
+      await withdrawal.save();
+      return res.json({
+        status: 'success',
+        data: withdrawal,
+        mode: 'auto',
+        paystack: { transferStatus, transferCode: transfer?.transfer_code },
+      });
+    } catch (err) {
+      const msg = err.response?.data?.message || err.message || 'Paystack transfer failed';
+      console.error('Withdrawal auto-payout failed:', msg);
+      return res.status(400).json({
+        status: 'error',
+        message: `Payout failed: ${msg}. You can retry or approve manually.`,
+      });
+    }
   } catch (err) {
     console.error('Admin error:', err.message);
     res.status(500).json({ status: 'error', message: 'Something went wrong. Please try again.' });
@@ -309,7 +440,15 @@ router.post('/pricing/sync', async (req, res) => {
 router.get('/settings', async (req, res) => {
   try {
     const settings = await Settings.getSettings();
-    res.json({ status: 'success', data: settings });
+    // Clone and strip sensitive secrets before returning
+    const safe = settings.toObject();
+    const encryptedTransferKey = safe?.paystack?.transferKey || '';
+    if (safe.paystack) {
+      safe.paystack.transferKey = undefined;
+      safe.paystack.transferKeyMasked = mask(encryptedTransferKey);
+      safe.paystack.transferKeyConfigured = isConfigured(encryptedTransferKey);
+    }
+    res.json({ status: 'success', data: safe });
   } catch (err) {
     console.error('Admin error:', err.message);
     res.status(500).json({ status: 'error', message: 'Something went wrong. Please try again.' });
@@ -319,13 +458,28 @@ router.get('/settings', async (req, res) => {
 // PUT /api/admin/settings
 router.put('/settings', async (req, res) => {
   try {
-    const { datamart, paystack, sms, withdrawal, agentSupport } = req.body;
+    const { datamart, paystack, sms, withdrawal, agentSupport, ordersPaused, ordersPausedMessage } = req.body;
     const updates = {};
     if (datamart) updates.datamart = datamart;
-    if (paystack) updates.paystack = paystack;
     if (sms) updates.sms = sms;
     if (withdrawal) updates.withdrawal = withdrawal;
     if (agentSupport) updates.agentSupport = agentSupport;
+    if (ordersPaused !== undefined) updates.ordersPaused = !!ordersPaused;
+    if (ordersPausedMessage !== undefined) updates.ordersPausedMessage = String(ordersPausedMessage);
+
+    if (paystack) {
+      // Handle the transfer key specially so we never persist plaintext.
+      // Empty string → leave existing key untouched. Explicit null → clear it.
+      const { transferKey, ...rest } = paystack;
+      for (const [k, v] of Object.entries(rest)) {
+        updates[`paystack.${k}`] = v;
+      }
+      if (transferKey === null) {
+        updates['paystack.transferKey'] = '';
+      } else if (typeof transferKey === 'string' && transferKey.trim()) {
+        updates['paystack.transferKey'] = encrypt(transferKey.trim());
+      }
+    }
 
     await Settings.findOneAndUpdate(
       { _id: 'app_settings' },
@@ -335,6 +489,43 @@ router.put('/settings', async (req, res) => {
     res.json({ status: 'success', message: 'Settings updated' });
   } catch (err) {
     console.error('Admin error:', err.message);
+    res.status(500).json({ status: 'error', message: 'Something went wrong. Please try again.' });
+  }
+});
+
+// POST /api/admin/settings/test-transfer-key — Verify the transfer key works
+router.post('/settings/test-transfer-key', async (req, res) => {
+  try {
+    const client = await paystackService.getTransferClient();
+    // Hit a lightweight endpoint — listing banks verifies the key works
+    const resp = await client.get('/bank?currency=GHS&type=mobile_money');
+    res.json({
+      status: 'success',
+      data: {
+        connected: resp.data?.status === true,
+        banksFound: Array.isArray(resp.data?.data) ? resp.data.data.length : 0,
+      },
+    });
+  } catch (err) {
+    const msg = err.response?.data?.message || err.message;
+    res.status(400).json({ status: 'error', message: `Transfer key test failed: ${msg}` });
+  }
+});
+
+// POST /api/admin/orders/pause - Quick toggle for pausing orders
+router.post('/orders/pause', async (req, res) => {
+  try {
+    const { paused, message } = req.body;
+    const updates = { ordersPaused: !!paused };
+    if (message !== undefined) updates.ordersPausedMessage = String(message);
+    await Settings.findOneAndUpdate(
+      { _id: 'app_settings' },
+      { $set: updates },
+      { upsert: true }
+    );
+    res.json({ status: 'success', data: { ordersPaused: !!paused } });
+  } catch (err) {
+    console.error('Admin pause error:', err.message);
     res.status(500).json({ status: 'error', message: 'Something went wrong. Please try again.' });
   }
 });
