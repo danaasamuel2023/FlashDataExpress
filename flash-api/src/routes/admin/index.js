@@ -251,6 +251,84 @@ router.get('/withdrawals', async (req, res) => {
   }
 });
 
+// POST /api/admin/withdrawals/:id/check-status — Re-query Paystack for this
+// transfer's current status, update the withdrawal, and return the fresh record.
+router.post('/withdrawals/:id/check-status', async (req, res) => {
+  try {
+    const withdrawal = await Withdrawal.findById(req.params.id);
+    if (!withdrawal) {
+      return res.status(404).json({ status: 'error', message: 'Withdrawal not found' });
+    }
+
+    const lookup = withdrawal.paystackTransferCode || withdrawal.reference;
+    if (!lookup) {
+      return res.status(400).json({
+        status: 'error',
+        message: 'This withdrawal has no Paystack transfer on record (manual or not yet approved).',
+      });
+    }
+
+    let transfer;
+    try {
+      transfer = await paystackService.fetchTransfer(lookup);
+    } catch (err) {
+      const msg = err.response?.data?.message || err.message;
+      return res.status(400).json({ status: 'error', message: `Paystack lookup failed: ${msg}` });
+    }
+
+    const newStatus = (transfer?.status || '').toLowerCase();
+    withdrawal.paystackTransferStatus = newStatus || withdrawal.paystackTransferStatus;
+    if (transfer?.transfer_code) withdrawal.paystackTransferCode = transfer.transfer_code;
+
+    // Map Paystack transfer status → our withdrawal status
+    if (newStatus === 'success') {
+      withdrawal.status = 'completed';
+      withdrawal.rejectionReason = undefined;
+    } else if (newStatus === 'failed' || newStatus === 'reversed') {
+      // Only refund pendingBalance if we haven't already (status was completed/processing)
+      if (withdrawal.status === 'completed' || withdrawal.status === 'processing') {
+        if (withdrawal.subAgentId) {
+          const SubAgent = require('../../models/SubAgent');
+          await SubAgent.findOneAndUpdate(
+            { _id: withdrawal.subAgentId },
+            { $inc: { pendingBalance: withdrawal.amount } }
+          );
+        } else if (withdrawal.storeId) {
+          await Store.findOneAndUpdate(
+            { _id: withdrawal.storeId },
+            { $inc: { pendingBalance: withdrawal.amount } }
+          );
+        }
+      }
+      withdrawal.status = 'rejected';
+      withdrawal.rejectionReason =
+        transfer?.failures?.[0]?.message ||
+        transfer?.reason ||
+        transfer?.gateway_response ||
+        `Paystack reported: ${newStatus}`;
+    } else if (newStatus === 'pending' || newStatus === 'otp' || newStatus === 'processing') {
+      withdrawal.status = 'processing';
+    }
+
+    await withdrawal.save();
+    res.json({
+      status: 'success',
+      data: withdrawal,
+      paystack: {
+        status: newStatus,
+        transfer_code: transfer?.transfer_code,
+        reason: transfer?.reason,
+        failureMessage: transfer?.failures?.[0]?.message,
+        gatewayResponse: transfer?.gateway_response,
+        createdAt: transfer?.createdAt,
+      },
+    });
+  } catch (err) {
+    console.error('Admin check-status error:', err.message);
+    res.status(500).json({ status: 'error', message: 'Something went wrong. Please try again.' });
+  }
+});
+
 // PUT /api/admin/withdrawals/:id
 // Body: { status: 'completed' | 'rejected', rejectionReason?, mode?: 'auto' | 'manual' }
 //   - 'auto' (default when transfer key is set): initiate a Paystack transfer.

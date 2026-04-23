@@ -121,6 +121,14 @@ class PaystackService {
     return res.data?.data;
   }
 
+  // Fetch a transfer's current state from Paystack. Accepts either the
+  // numeric id, the transfer_code, or the withdrawal reference.
+  async fetchTransfer(idOrCodeOrRef) {
+    const client = await this.getTransferClient();
+    const res = await client.get(`/transfer/${encodeURIComponent(idOrCodeOrRef)}`);
+    return res.data?.data;
+  }
+
   // One-shot helper: recipient + transfer. Returns the transfer record.
   async payoutToMomo({ name, accountNumber, network, amountGHS, reference, reason }) {
     const recipient = await this.createMomoRecipient({ name, accountNumber, network });
