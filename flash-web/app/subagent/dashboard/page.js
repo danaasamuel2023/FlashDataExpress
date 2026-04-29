@@ -2,10 +2,20 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { BarChart3, DollarSign, ShoppingBag, Package, Copy, Check, ExternalLink, LogOut, Loader2, Clock, MessageCircle, Save, CalendarDays, RefreshCw, Wallet } from 'lucide-react';
+import { BarChart3, DollarSign, ShoppingBag, Package, Copy, Check, ExternalLink, LogOut, Loader2, Clock, MessageCircle, Save, CalendarDays, RefreshCw, Wallet, ChevronDown, ChevronUp } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { formatCurrency, formatDate } from '@/lib/constants';
 import api from '@/lib/api';
+
+function formatDayLabel(dateStr) {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const d = new Date(dateStr + 'T00:00:00');
+  const diff = Math.round((today - d) / (1000 * 60 * 60 * 24));
+  if (diff === 0) return 'Today';
+  if (diff === 1) return 'Yesterday';
+  return d.toLocaleDateString(undefined, { weekday: 'long', month: 'short', day: 'numeric' });
+}
 
 export default function SubAgentDashboardPage() {
   const router = useRouter();
@@ -16,6 +26,9 @@ export default function SubAgentDashboardPage() {
   const [savingWhatsapp, setSavingWhatsapp] = useState(false);
   const [dailySales, setDailySales] = useState(null);
   const [loadingDaily, setLoadingDaily] = useState(false);
+  const [history, setHistory] = useState(null);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [loadingHistory, setLoadingHistory] = useState(false);
 
   useEffect(() => {
     const token = localStorage.getItem('ds_token');
@@ -26,6 +39,24 @@ export default function SubAgentDashboardPage() {
     fetchDashboard();
     fetchDailySales();
   }, []);
+
+  const fetchHistory = async () => {
+    setLoadingHistory(true);
+    try {
+      const res = await api.get('/subagent/my-daily-history?days=7');
+      setHistory(res.data.data);
+    } catch {
+      // ignore
+    } finally {
+      setLoadingHistory(false);
+    }
+  };
+
+  const toggleHistory = () => {
+    const next = !historyOpen;
+    setHistoryOpen(next);
+    if (next && !history) fetchHistory();
+  };
 
   const fetchDashboard = async () => {
     try {
@@ -183,32 +214,38 @@ export default function SubAgentDashboardPage() {
           </div>
         </div>
 
-        {/* Lifetime totals */}
+        {/* Lifetime totals — Total Sales / Total Earnings open the daily breakdown */}
         <div>
           <p className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-2">All Time</p>
           <div className="grid grid-cols-3 gap-4">
-            <div className="bg-gray-900 border border-gray-800 rounded-xl p-4">
+            <button onClick={toggleHistory} className="bg-gray-900 border border-gray-800 rounded-xl p-4 text-left hover:border-amber-500/30 transition-colors">
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 bg-amber-500/10 rounded-xl flex items-center justify-center">
                   <ShoppingBag className="w-5 h-5 text-amber-400" />
                 </div>
-                <div>
+                <div className="flex-1">
                   <p className="text-lg font-extrabold text-white">{subAgent.totalSales || 0}</p>
-                  <p className="text-xs text-gray-500">Total Sales</p>
+                  <p className="text-xs text-gray-500 flex items-center gap-1">
+                    Total Sales <CalendarDays className="w-3 h-3" />
+                  </p>
                 </div>
+                {historyOpen ? <ChevronUp className="w-4 h-4 text-gray-500" /> : <ChevronDown className="w-4 h-4 text-gray-500" />}
               </div>
-            </div>
-            <div className="bg-gray-900 border border-gray-800 rounded-xl p-4">
+            </button>
+            <button onClick={toggleHistory} className="bg-gray-900 border border-gray-800 rounded-xl p-4 text-left hover:border-amber-500/30 transition-colors">
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 bg-green-500/10 rounded-xl flex items-center justify-center">
                   <DollarSign className="w-5 h-5 text-green-400" />
                 </div>
-                <div>
+                <div className="flex-1">
                   <p className="text-lg font-extrabold text-white">{formatCurrency(subAgent.totalEarnings || 0)}</p>
-                  <p className="text-xs text-gray-500">Total Earnings</p>
+                  <p className="text-xs text-gray-500 flex items-center gap-1">
+                    Total Earnings <CalendarDays className="w-3 h-3" />
+                  </p>
                 </div>
+                {historyOpen ? <ChevronUp className="w-4 h-4 text-gray-500" /> : <ChevronDown className="w-4 h-4 text-gray-500" />}
               </div>
-            </div>
+            </button>
             <div className="bg-gray-900 border border-gray-800 rounded-xl p-4">
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 bg-blue-500/10 rounded-xl flex items-center justify-center">
@@ -221,7 +258,70 @@ export default function SubAgentDashboardPage() {
               </div>
             </div>
           </div>
+          <p className="text-[10px] text-gray-500 mt-2">
+            Tap <span className="font-semibold">Total Sales</span> or <span className="font-semibold">Total Earnings</span> for a day-by-day breakdown.
+          </p>
         </div>
+
+        {/* 7-day breakdown panel */}
+        {historyOpen && (
+          <div className="bg-gray-900 border border-gray-800 rounded-xl p-4">
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <h2 className="font-bold text-white">Daily Sales History</h2>
+                <p className="text-xs text-gray-500 mt-0.5">Last 7 days &middot; resets at midnight</p>
+              </div>
+              <button onClick={fetchHistory} disabled={loadingHistory} className="flex items-center gap-1 text-xs text-amber-400 font-bold disabled:opacity-50">
+                <RefreshCw className={`w-3 h-3 ${loadingHistory ? 'animate-spin' : ''}`} /> Refresh
+              </button>
+            </div>
+            {loadingHistory && !history ? (
+              <div className="flex justify-center py-8"><Loader2 className="w-5 h-5 text-amber-400 animate-spin" /></div>
+            ) : !history ? (
+              <p className="text-gray-500 text-sm text-center py-6">No history yet.</p>
+            ) : (
+              <>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3 pb-4 mb-4 border-b border-gray-800">
+                  <div>
+                    <p className="text-[10px] text-gray-500">Sales (week)</p>
+                    <p className="text-lg font-extrabold text-white">{history.weekTotal.salesCount}</p>
+                  </div>
+                  <div>
+                    <p className="text-[10px] text-gray-500">Revenue (week)</p>
+                    <p className="text-lg font-extrabold text-white">{formatCurrency(history.weekTotal.revenue)}</p>
+                  </div>
+                  <div>
+                    <p className="text-[10px] text-gray-500">Profit (week)</p>
+                    <p className="text-lg font-extrabold text-green-400">{formatCurrency(history.weekTotal.profit)}</p>
+                  </div>
+                  <div>
+                    <p className="text-[10px] text-gray-500">Failed</p>
+                    <p className="text-lg font-extrabold text-red-400">{history.weekTotal.failedCount}</p>
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  {history.days.map(day => (
+                    <div key={day.date} className="flex items-center justify-between py-2 border-b border-gray-800 last:border-0">
+                      <div>
+                        <p className="font-bold text-white text-sm">{formatDayLabel(day.date)}</p>
+                        <p className="text-[10px] text-gray-500">
+                          {day.salesCount} {day.salesCount === 1 ? 'sale' : 'sales'}
+                          {day.failedCount > 0 ? ` · ${day.failedCount} failed` : ''}
+                        </p>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-sm font-bold text-white">{formatCurrency(day.revenue)}</p>
+                        <p className="text-[10px] font-semibold text-green-400">
+                          Profit: {formatCurrency(day.profit)}
+                        </p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
+        )}
 
         {/* Today's Sales List */}
         {dailySales?.sales?.length > 0 && (

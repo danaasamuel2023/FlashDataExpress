@@ -1,12 +1,22 @@
 'use client';
 import { useState, useEffect } from 'react';
-import { Store, TrendingUp, Wallet, ShoppingBag, ExternalLink, Loader2, Copy, Check, Users, MessageCircle, Phone, Clock, DollarSign, CalendarDays, RefreshCw } from 'lucide-react';
+import { Store, TrendingUp, Wallet, ShoppingBag, ExternalLink, Loader2, Copy, Check, Users, MessageCircle, Phone, Clock, DollarSign, CalendarDays, RefreshCw, ChevronDown, ChevronUp } from 'lucide-react';
 import Link from 'next/link';
 import toast from 'react-hot-toast';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
 import { formatCurrency, formatDate } from '@/lib/constants';
 import api from '@/lib/api';
+
+function formatDayLabel(dateStr) {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const d = new Date(dateStr + 'T00:00:00');
+  const diff = Math.round((today - d) / (1000 * 60 * 60 * 24));
+  if (diff === 0) return 'Today';
+  if (diff === 1) return 'Yesterday';
+  return d.toLocaleDateString(undefined, { weekday: 'long', month: 'short', day: 'numeric' });
+}
 
 export default function StoreDashboardPage() {
   const [store, setStore] = useState(null);
@@ -15,6 +25,9 @@ export default function StoreDashboardPage() {
   const [agentSupport, setAgentSupport] = useState({ phone: '', whatsapp: '' });
   const [dailySales, setDailySales] = useState(null);
   const [loadingDaily, setLoadingDaily] = useState(false);
+  const [history, setHistory] = useState(null);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [loadingHistory, setLoadingHistory] = useState(false);
 
   useEffect(() => {
     fetchStore();
@@ -34,6 +47,24 @@ export default function StoreDashboardPage() {
     } finally {
       setLoadingDaily(false);
     }
+  };
+
+  const fetchHistory = async () => {
+    setLoadingHistory(true);
+    try {
+      const res = await api.get('/store/daily-history?days=7');
+      setHistory(res.data.data);
+    } catch {
+      // ignore
+    } finally {
+      setLoadingHistory(false);
+    }
+  };
+
+  const toggleHistory = () => {
+    const next = !historyOpen;
+    setHistoryOpen(next);
+    if (next && !history) fetchHistory();
   };
 
   const fetchStore = async () => {
@@ -156,32 +187,42 @@ export default function StoreDashboardPage() {
         </div>
       </div>
 
-      {/* Lifetime totals — kept for reference */}
+      {/* Lifetime totals — Total Sales / Total Earnings open the daily breakdown */}
       <div>
         <p className="text-xs font-bold text-text-muted uppercase tracking-wider mb-2">All Time</p>
         <div className="grid grid-cols-3 gap-4">
-          <Card>
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 bg-primary/10 rounded-xl flex items-center justify-center">
-                <ShoppingBag className="w-5 h-5 text-primary" />
+          <button onClick={toggleHistory} className="text-left">
+            <Card hover>
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 bg-primary/10 rounded-xl flex items-center justify-center">
+                  <ShoppingBag className="w-5 h-5 text-primary" />
+                </div>
+                <div className="flex-1">
+                  <p className="text-lg font-extrabold text-white">{store.totalSales || 0}</p>
+                  <p className="text-xs text-text-muted flex items-center gap-1">
+                    Total Sales <CalendarDays className="w-3 h-3" />
+                  </p>
+                </div>
+                {historyOpen ? <ChevronUp className="w-4 h-4 text-text-muted" /> : <ChevronDown className="w-4 h-4 text-text-muted" />}
               </div>
-              <div>
-                <p className="text-lg font-extrabold text-white">{store.totalSales || 0}</p>
-                <p className="text-xs text-text-muted">Total Sales</p>
+            </Card>
+          </button>
+          <button onClick={toggleHistory} className="text-left">
+            <Card hover>
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 bg-success/10 rounded-xl flex items-center justify-center">
+                  <TrendingUp className="w-5 h-5 text-success" />
+                </div>
+                <div className="flex-1">
+                  <p className="text-lg font-extrabold text-white">{formatCurrency(store.totalEarnings || 0)}</p>
+                  <p className="text-xs text-text-muted flex items-center gap-1">
+                    Total Earnings <CalendarDays className="w-3 h-3" />
+                  </p>
+                </div>
+                {historyOpen ? <ChevronUp className="w-4 h-4 text-text-muted" /> : <ChevronDown className="w-4 h-4 text-text-muted" />}
               </div>
-            </div>
-          </Card>
-          <Card>
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 bg-success/10 rounded-xl flex items-center justify-center">
-                <TrendingUp className="w-5 h-5 text-success" />
-              </div>
-              <div>
-                <p className="text-lg font-extrabold text-white">{formatCurrency(store.totalEarnings || 0)}</p>
-                <p className="text-xs text-text-muted">Total Earnings</p>
-              </div>
-            </div>
-          </Card>
+            </Card>
+          </button>
           <Card>
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 bg-accent/10 rounded-xl flex items-center justify-center">
@@ -194,7 +235,72 @@ export default function StoreDashboardPage() {
             </div>
           </Card>
         </div>
+        <p className="text-[10px] text-text-muted mt-2">
+          Click <span className="font-semibold">Total Sales</span> or <span className="font-semibold">Total Earnings</span> to see a day-by-day breakdown for the week.
+        </p>
       </div>
+
+      {/* 7-day breakdown panel */}
+      {historyOpen && (
+        <Card>
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <h2 className="font-bold text-white">Daily Sales History</h2>
+              <p className="text-xs text-text-muted mt-0.5">Last 7 days &middot; resets at midnight</p>
+            </div>
+            <button onClick={fetchHistory} disabled={loadingHistory} className="flex items-center gap-1.5 text-xs font-bold text-primary hover:text-primary/80 disabled:opacity-50">
+              <RefreshCw className={`w-3.5 h-3.5 ${loadingHistory ? 'animate-spin' : ''}`} /> Refresh
+            </button>
+          </div>
+          {loadingHistory && !history ? (
+            <div className="flex justify-center py-8"><Loader2 className="w-5 h-5 text-primary animate-spin" /></div>
+          ) : !history ? (
+            <p className="text-text-muted text-sm text-center py-6">No history yet.</p>
+          ) : (
+            <>
+              {/* Week summary */}
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3 pb-4 mb-4 border-b border-white/[0.04]">
+                <div>
+                  <p className="text-[10px] text-text-muted">Sales (week)</p>
+                  <p className="text-lg font-extrabold text-white">{history.weekTotal.salesCount}</p>
+                </div>
+                <div>
+                  <p className="text-[10px] text-text-muted">Revenue (week)</p>
+                  <p className="text-lg font-extrabold text-white">{formatCurrency(history.weekTotal.revenue)}</p>
+                </div>
+                <div>
+                  <p className="text-[10px] text-text-muted">Profit (week)</p>
+                  <p className="text-lg font-extrabold text-success">{formatCurrency(history.weekTotal.profit)}</p>
+                </div>
+                <div>
+                  <p className="text-[10px] text-text-muted">Failed</p>
+                  <p className="text-lg font-extrabold text-error">{history.weekTotal.failedCount}</p>
+                </div>
+              </div>
+              {/* Daily rows */}
+              <div className="space-y-2">
+                {history.days.map(day => (
+                  <div key={day.date} className="flex items-center justify-between py-2 border-b border-white/[0.04] last:border-0">
+                    <div>
+                      <p className="font-bold text-white text-sm">{formatDayLabel(day.date)}</p>
+                      <p className="text-[10px] text-text-muted">
+                        {day.salesCount} {day.salesCount === 1 ? 'sale' : 'sales'}
+                        {day.failedCount > 0 ? ` · ${day.failedCount} failed` : ''}
+                      </p>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-sm font-bold text-white">{formatCurrency(day.revenue)}</p>
+                      <p className="text-[10px] font-semibold text-success">
+                        Profit: {formatCurrency(day.profit)}
+                      </p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
+        </Card>
+      )}
 
       {/* Today's Sales History */}
       {store && (

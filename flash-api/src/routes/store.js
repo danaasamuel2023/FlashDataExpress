@@ -331,6 +331,70 @@ router.get('/daily-sales', auth, async (req, res) => {
   }
 });
 
+// GET /api/store/daily-history — rolling per-day breakdown of store sales
+router.get('/daily-history', auth, async (req, res) => {
+  try {
+    const store = await Store.findOne({ agentId: req.user._id });
+    if (!store) return res.status(404).json({ status: 'error', message: 'Store not found' });
+
+    const days = Math.min(31, Math.max(1, parseInt(req.query.days, 10) || 7));
+    const startDate = new Date();
+    startDate.setHours(0, 0, 0, 0);
+    startDate.setDate(startDate.getDate() - (days - 1));
+
+    const sales = await DataPurchase.find({
+      'storeDetails.storeId': store._id,
+      createdAt: { $gte: startDate },
+    }).lean();
+
+    const buckets = {};
+    for (let i = 0; i < days; i++) {
+      const d = new Date(startDate);
+      d.setDate(startDate.getDate() + i);
+      const key = d.toISOString().slice(0, 10);
+      buckets[key] = {
+        date: key,
+        salesCount: 0, completedCount: 0, failedCount: 0,
+        revenue: 0, profit: 0,
+      };
+    }
+
+    for (const s of sales) {
+      const key = new Date(s.createdAt).toISOString().slice(0, 10);
+      const bucket = buckets[key];
+      if (!bucket) continue;
+      bucket.salesCount += 1;
+      if (s.status === 'completed') bucket.completedCount += 1;
+      if (s.status === 'failed' || s.status === 'refunded') bucket.failedCount += 1;
+      if (['completed', 'processing', 'pending'].includes(s.status)) {
+        bucket.revenue += s.price || 0;
+        bucket.profit += s.storeDetails?.agentProfit || 0;
+      }
+    }
+
+    const daysList = Object.values(buckets)
+      .map(b => ({ ...b, profit: Math.round(b.profit * 100) / 100, revenue: Math.round(b.revenue * 100) / 100 }))
+      .sort((a, b) => b.date.localeCompare(a.date));
+
+    res.json({
+      status: 'success',
+      data: {
+        days: daysList,
+        weekTotal: {
+          salesCount: daysList.reduce((s, d) => s + d.salesCount, 0),
+          completedCount: daysList.reduce((s, d) => s + d.completedCount, 0),
+          failedCount: daysList.reduce((s, d) => s + d.failedCount, 0),
+          revenue: Math.round(daysList.reduce((s, d) => s + d.revenue, 0) * 100) / 100,
+          profit: Math.round(daysList.reduce((s, d) => s + d.profit, 0) * 100) / 100,
+        },
+      },
+    });
+  } catch (err) {
+    console.error('Store daily-history error:', err.message);
+    res.status(500).json({ status: 'error', message: 'Something went wrong. Please try again.' });
+  }
+});
+
 // GET /api/store/earnings
 router.get('/earnings', auth, async (req, res) => {
   try {

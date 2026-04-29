@@ -35,6 +35,13 @@ const StoreSchema = new mongoose.Schema({
   },
   contactPhone: String,
   contactWhatsapp: String,
+  subAgentInviteCode: {
+    type: String,
+    unique: true,
+    sparse: true,
+    uppercase: true,
+    trim: true,
+  },
   totalEarnings: { type: Number, default: 0 },
   totalSales: { type: Number, default: 0 },
   pendingBalance: { type: Number, default: 0 },
