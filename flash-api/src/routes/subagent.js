@@ -36,7 +36,32 @@ const subagentAuth = async (req, res, next) => {
 
 // ─── PARENT AGENT ROUTES (require auth) ───
 
-// POST /api/subagent/generate-invite — Parent agent generates an invite link
+// Build a fresh shared invite code: STR-prefix + random suffix
+function buildShareCode(storeName) {
+  const prefix = (storeName || 'STR').substring(0, 3).toUpperCase().replace(/[^A-Z]/g, 'X');
+  return prefix + 'SHARE' + Math.random().toString(36).substring(2, 8).toUpperCase();
+}
+
+async function ensureStoreInviteCode(store) {
+  if (store.subAgentInviteCode) return store.subAgentInviteCode;
+
+  // Try a few times in case of unique collision
+  for (let i = 0; i < 5; i++) {
+    const code = buildShareCode(store.storeName);
+    try {
+      store.subAgentInviteCode = code;
+      await store.save();
+      return code;
+    } catch (err) {
+      if (err.code === 11000) continue;
+      throw err;
+    }
+  }
+  throw new Error('Could not generate unique invite code');
+}
+
+// POST /api/subagent/generate-invite — Returns the store's shared invite link.
+// Same link onboards every sub-agent until rotated.
 router.post('/generate-invite', auth, async (req, res) => {
   try {
     const store = await Store.findOne({ agentId: req.user._id });
@@ -44,60 +69,70 @@ router.post('/generate-invite', auth, async (req, res) => {
       return res.status(404).json({ status: 'error', message: 'You need a store first' });
     }
 
-    const inviteCode = store.storeName.substring(0, 3).toUpperCase().replace(/[^A-Z]/g, 'X') +
-      'INV' +
-      Math.random().toString(36).substring(2, 8).toUpperCase();
-
-    const subAgent = await SubAgent.create({
-      storeId: store._id,
-      parentAgentId: req.user._id,
-      inviteCode,
-      status: 'pending',
-    });
-
+    const inviteCode = await ensureStoreInviteCode(store);
     const inviteLink = `${process.env.FRONTEND_URL || 'http://localhost:3000'}/subagent/register/${inviteCode}`;
 
-    res.status(201).json({
+    res.status(200).json({
       status: 'success',
-      data: {
-        inviteCode,
-        inviteLink,
-        subAgentId: subAgent._id,
-      },
+      data: { inviteCode, inviteLink, shared: true },
     });
   } catch (err) {
-    console.error('SubAgent generate-invite error:', err.code, err.message, JSON.stringify(err.keyPattern));
-    if (err.code === 11000) {
-      // Retry once with a different code in case of collision
+    console.error('SubAgent generate-invite error:', err.message);
+    res.status(500).json({ status: 'error', message: 'Something went wrong. Please try again.' });
+  }
+});
+
+// POST /api/subagent/rotate-invite — Issues a new shared code, invalidating old links.
+router.post('/rotate-invite', auth, async (req, res) => {
+  try {
+    const store = await Store.findOne({ agentId: req.user._id });
+    if (!store) {
+      return res.status(404).json({ status: 'error', message: 'You need a store first' });
+    }
+
+    for (let i = 0; i < 5; i++) {
+      const code = buildShareCode(store.storeName);
       try {
-        const retryCode = store.storeName.substring(0, 3).toUpperCase().replace(/[^A-Z]/g, 'X') +
-          'INV' +
-          Math.random().toString(36).substring(2, 8).toUpperCase();
-        const subAgent = await SubAgent.create({
-          storeId: store._id,
-          parentAgentId: req.user._id,
-          inviteCode: retryCode,
-          status: 'pending',
-        });
-        const inviteLink = `${process.env.FRONTEND_URL || 'http://localhost:3000'}/subagent/register/${retryCode}`;
-        return res.status(201).json({
-          status: 'success',
-          data: { inviteCode: retryCode, inviteLink, subAgentId: subAgent._id },
-        });
-      } catch (retryErr) {
-        console.error('SubAgent generate-invite retry error:', retryErr.code, retryErr.message, JSON.stringify(retryErr.keyPattern));
-        return res.status(400).json({ status: 'error', message: 'Failed to generate invite. The old database index may need to be removed. Check server logs.' });
+        store.subAgentInviteCode = code;
+        await store.save();
+        const inviteLink = `${process.env.FRONTEND_URL || 'http://localhost:3000'}/subagent/register/${code}`;
+        return res.json({ status: 'success', data: { inviteCode: code, inviteLink, shared: true } });
+      } catch (err) {
+        if (err.code === 11000) continue;
+        throw err;
       }
     }
+    res.status(500).json({ status: 'error', message: 'Could not rotate invite code' });
+  } catch (err) {
+    console.error('SubAgent rotate-invite error:', err.message);
     res.status(500).json({ status: 'error', message: 'Something went wrong. Please try again.' });
   }
 });
 
 // GET /api/subagent/invite-info/:code — Public: get info about an invite
+// Resolves both store-level shared codes and legacy per-sub-agent pending codes.
 router.get('/invite-info/:code', async (req, res) => {
   try {
+    const code = req.params.code.toUpperCase();
+
+    // 1. Shared store-level code
+    const store = await Store.findOne({ subAgentInviteCode: code });
+    if (store) {
+      const parentAgent = await User.findById(store.agentId).select('name');
+      return res.json({
+        status: 'success',
+        data: {
+          storeName: store.storeName,
+          storeDescription: store.description,
+          parentAgentName: parentAgent?.name,
+          inviteCode: code,
+        },
+      });
+    }
+
+    // 2. Legacy per-invite pending code
     const subAgent = await SubAgent.findOne({
-      inviteCode: req.params.code.toUpperCase(),
+      inviteCode: code,
       status: 'pending',
     }).populate('storeId', 'storeName storeSlug description theme');
 
@@ -106,7 +141,6 @@ router.get('/invite-info/:code', async (req, res) => {
     }
 
     const parentAgent = await User.findById(subAgent.parentAgentId).select('name');
-
     res.json({
       status: 'success',
       data: {
@@ -139,15 +173,24 @@ router.post('/register', [
 
     const { inviteCode, name, email, password, phoneNumber, storeName } = req.body;
     const formattedPhone = formatPhone(phoneNumber);
+    const code = inviteCode.toUpperCase();
 
-    // Find the pending invite
-    const subAgent = await SubAgent.findOne({
-      inviteCode: inviteCode.toUpperCase(),
-      status: 'pending',
-    }).populate('storeId');
+    // Resolve invite — prefer the store's shared code, fall back to legacy per-invite record
+    const sharedStore = await Store.findOne({ subAgentInviteCode: code });
+    let legacySubAgent = null;
+    let parentStore;
 
-    if (!subAgent) {
-      return res.status(404).json({ status: 'error', message: 'Invalid or expired invite link' });
+    if (sharedStore) {
+      parentStore = sharedStore;
+    } else {
+      legacySubAgent = await SubAgent.findOne({
+        inviteCode: code,
+        status: 'pending',
+      }).populate('storeId');
+      if (!legacySubAgent) {
+        return res.status(404).json({ status: 'error', message: 'Invalid or expired invite link' });
+      }
+      parentStore = legacySubAgent.storeId;
     }
 
     // Check if email/phone already exists
@@ -183,17 +226,33 @@ router.post('/register', [
       name.substring(0, 2).toUpperCase().replace(/[^A-Z]/g, 'X') +
       Math.random().toString(36).substring(2, 6).toUpperCase();
 
-    // Update sub-agent record
-    subAgent.userId = user._id;
-    subAgent.storeName = storeName.trim();
-    subAgent.storeSlug = storeSlug;
-    subAgent.contactPhone = formattedPhone;
-    subAgent.referralCode = referralCode;
-    subAgent.status = 'registered';
-    await subAgent.save();
+    let subAgent;
+    if (sharedStore) {
+      // Shared code → create a fresh registered SubAgent record
+      subAgent = await SubAgent.create({
+        storeId: parentStore._id,
+        parentAgentId: parentStore.agentId,
+        userId: user._id,
+        storeName: storeName.trim(),
+        storeSlug,
+        contactPhone: formattedPhone,
+        referralCode,
+        status: 'registered',
+      });
+    } else {
+      // Legacy code → fill in the pending SubAgent record
+      legacySubAgent.userId = user._id;
+      legacySubAgent.storeName = storeName.trim();
+      legacySubAgent.storeSlug = storeSlug;
+      legacySubAgent.contactPhone = formattedPhone;
+      legacySubAgent.referralCode = referralCode;
+      legacySubAgent.status = 'registered';
+      await legacySubAgent.save();
+      subAgent = legacySubAgent;
+    }
 
     // Auto-populate products from parent store with parent's selling prices as base prices
-    const parentProducts = await StoreProduct.find({ storeId: subAgent.storeId._id, isActive: true });
+    const parentProducts = await StoreProduct.find({ storeId: parentStore._id, isActive: true });
     if (parentProducts.length > 0) {
       const subProducts = parentProducts.map(p => ({
         subAgentId: subAgent._id,
@@ -224,7 +283,7 @@ router.post('/register', [
           id: subAgent._id,
           storeName: subAgent.storeName,
           storeSlug: subAgent.storeSlug,
-          parentStoreName: subAgent.storeId?.storeName,
+          parentStoreName: parentStore.storeName,
         },
       },
     });
@@ -367,6 +426,67 @@ router.get('/my-daily-sales', subagentAuth, async (req, res) => {
     });
   } catch (err) {
     console.error('SubAgent daily-sales error:', err.message);
+    res.status(500).json({ status: 'error', message: 'Something went wrong. Please try again.' });
+  }
+});
+
+// GET /api/subagent/my-daily-history — rolling per-day breakdown of sub-agent sales
+router.get('/my-daily-history', subagentAuth, async (req, res) => {
+  try {
+    const days = Math.min(31, Math.max(1, parseInt(req.query.days, 10) || 7));
+    const startDate = new Date();
+    startDate.setHours(0, 0, 0, 0);
+    startDate.setDate(startDate.getDate() - (days - 1));
+
+    const sales = await DataPurchase.find({
+      'storeDetails.subAgentId': req.subAgent._id,
+      createdAt: { $gte: startDate },
+    }).lean();
+
+    const buckets = {};
+    for (let i = 0; i < days; i++) {
+      const d = new Date(startDate);
+      d.setDate(startDate.getDate() + i);
+      const key = d.toISOString().slice(0, 10);
+      buckets[key] = {
+        date: key,
+        salesCount: 0, completedCount: 0, failedCount: 0,
+        revenue: 0, profit: 0,
+      };
+    }
+
+    for (const s of sales) {
+      const key = new Date(s.createdAt).toISOString().slice(0, 10);
+      const bucket = buckets[key];
+      if (!bucket) continue;
+      bucket.salesCount += 1;
+      if (s.status === 'completed') bucket.completedCount += 1;
+      if (s.status === 'failed' || s.status === 'refunded') bucket.failedCount += 1;
+      if (['completed', 'processing', 'pending'].includes(s.status)) {
+        bucket.revenue += s.price || 0;
+        bucket.profit += s.storeDetails?.subAgentProfit || 0;
+      }
+    }
+
+    const daysList = Object.values(buckets)
+      .map(b => ({ ...b, profit: Math.round(b.profit * 100) / 100, revenue: Math.round(b.revenue * 100) / 100 }))
+      .sort((a, b) => b.date.localeCompare(a.date));
+
+    res.json({
+      status: 'success',
+      data: {
+        days: daysList,
+        weekTotal: {
+          salesCount: daysList.reduce((s, d) => s + d.salesCount, 0),
+          completedCount: daysList.reduce((s, d) => s + d.completedCount, 0),
+          failedCount: daysList.reduce((s, d) => s + d.failedCount, 0),
+          revenue: Math.round(daysList.reduce((s, d) => s + d.revenue, 0) * 100) / 100,
+          profit: Math.round(daysList.reduce((s, d) => s + d.profit, 0) * 100) / 100,
+        },
+      },
+    });
+  } catch (err) {
+    console.error('SubAgent daily-history error:', err.message);
     res.status(500).json({ status: 'error', message: 'Something went wrong. Please try again.' });
   }
 });

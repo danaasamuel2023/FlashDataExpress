@@ -1,6 +1,6 @@
 'use client';
 import { useState, useEffect } from 'react';
-import { Users, Link2, Loader2, Trash2, Copy, Check, ExternalLink, Clock } from 'lucide-react';
+import { Users, Link2, Loader2, Trash2, Copy, Check, ExternalLink, Clock, RefreshCw } from 'lucide-react';
 import toast from 'react-hot-toast';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
@@ -11,12 +11,17 @@ export default function SubAgentsPage() {
   const [subAgents, setSubAgents] = useState([]);
   const [loading, setLoading] = useState(true);
   const [generating, setGenerating] = useState(false);
+  const [rotating, setRotating] = useState(false);
   const [copiedId, setCopiedId] = useState(null);
   const [store, setStore] = useState(null);
+  const [shareLink, setShareLink] = useState(null);
+  const [shareCode, setShareCode] = useState(null);
 
   useEffect(() => {
     fetchData();
   }, []);
+
+  const buildShareLink = (code) => `${window.location.origin}/subagent/register/${code}`;
 
   const fetchData = async () => {
     try {
@@ -26,6 +31,11 @@ export default function SubAgentsPage() {
       ]);
       setStore(storeRes.data.data);
       setSubAgents(subRes.data.data);
+      const code = storeRes.data.data?.subAgentInviteCode;
+      if (code) {
+        setShareCode(code);
+        setShareLink(buildShareLink(code));
+      }
     } catch {
       toast.error('Failed to load subagents');
     } finally {
@@ -38,15 +48,40 @@ export default function SubAgentsPage() {
     try {
       const res = await api.post('/subagent/generate-invite');
       const { inviteLink, inviteCode } = res.data.data;
+      setShareCode(inviteCode);
+      setShareLink(inviteLink);
       navigator.clipboard.writeText(inviteLink);
-      toast.success('Invite link generated and copied!');
-      // Refresh list to show the new pending invite
-      fetchData();
+      toast.success('Shared invite link copied! One link works for everyone.');
     } catch (err) {
       toast.error(err.response?.data?.message || 'Failed to generate invite');
     } finally {
       setGenerating(false);
     }
+  };
+
+  const handleRotate = async () => {
+    if (!confirm('Rotating creates a new link and invalidates the old shared one. Continue?')) return;
+    setRotating(true);
+    try {
+      const res = await api.post('/subagent/rotate-invite');
+      const { inviteLink, inviteCode } = res.data.data;
+      setShareCode(inviteCode);
+      setShareLink(inviteLink);
+      navigator.clipboard.writeText(inviteLink);
+      toast.success('New link generated and copied!');
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Failed to rotate link');
+    } finally {
+      setRotating(false);
+    }
+  };
+
+  const handleCopyShare = () => {
+    if (!shareLink) return;
+    navigator.clipboard.writeText(shareLink);
+    setCopiedId('SHARED');
+    toast.success('Invite link copied!');
+    setTimeout(() => setCopiedId(null), 2000);
   };
 
 
@@ -101,13 +136,53 @@ export default function SubAgentsPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-extrabold text-white tracking-tight">Subagents</h1>
-          <p className="text-text-muted text-sm mt-1">Generate invite links for people to sell for you.</p>
+          <p className="text-text-muted text-sm mt-1">Share one invite link with everyone you want to sell for you.</p>
         </div>
-        <Button size="sm" onClick={handleGenerateInvite} disabled={generating}>
-          {generating ? <Loader2 className="w-4 h-4 animate-spin" /> : <Link2 className="w-4 h-4" />}
-          Generate Invite Link
-        </Button>
+        {!shareLink && (
+          <Button size="sm" onClick={handleGenerateInvite} disabled={generating}>
+            {generating ? <Loader2 className="w-4 h-4 animate-spin" /> : <Link2 className="w-4 h-4" />}
+            Generate Invite Link
+          </Button>
+        )}
       </div>
+
+      {/* Shared invite link — one link onboards every sub-agent */}
+      {shareLink && (
+        <Card>
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            <div className="flex items-start gap-3 min-w-0 flex-1">
+              <div className="w-10 h-10 bg-primary/10 rounded-xl flex items-center justify-center flex-shrink-0">
+                <Link2 className="w-5 h-5 text-primary" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="font-bold text-white text-sm">Shared invite link</p>
+                <p className="text-xs text-text-muted mt-0.5">
+                  Anyone with this link can register as your sub-agent. Code: <span className="font-mono text-accent">{shareCode}</span>
+                </p>
+                <p className="text-xs text-text-muted mt-1 truncate font-mono">{shareLink}</p>
+              </div>
+            </div>
+            <div className="flex gap-2 flex-shrink-0">
+              <button
+                onClick={handleCopyShare}
+                className="flex items-center gap-1.5 px-3 py-2 bg-amber-500/10 text-amber-400 rounded-lg text-xs font-bold hover:bg-amber-500/20 transition-colors"
+              >
+                {copiedId === 'SHARED' ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                {copiedId === 'SHARED' ? 'Copied' : 'Copy'}
+              </button>
+              <button
+                onClick={handleRotate}
+                disabled={rotating}
+                className="flex items-center gap-1.5 px-3 py-2 bg-white/5 text-text-muted rounded-lg text-xs font-bold hover:bg-white/10 hover:text-white transition-colors disabled:opacity-50"
+                title="Generate a new link and invalidate the old one"
+              >
+                {rotating ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
+                Rotate
+              </button>
+            </div>
+          </div>
+        </Card>
+      )}
 
       {/* Stats */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
@@ -159,10 +234,10 @@ export default function SubAgentsPage() {
         </Card>
       </div>
 
-      {/* Pending invites */}
+      {/* Legacy single-use pending invites — kept working for old links */}
       {pendingInvites.length > 0 && (
         <div>
-          <h2 className="text-sm font-bold text-text-muted mb-3 uppercase tracking-wider">Pending Invites</h2>
+          <h2 className="text-sm font-bold text-text-muted mb-3 uppercase tracking-wider">Old Single-Use Invites</h2>
           <div className="space-y-2">
             {pendingInvites.map(invite => (
               <Card key={invite._id}>
@@ -208,7 +283,7 @@ export default function SubAgentsPage() {
               <div className="w-16 h-16 bg-white/5 rounded-2xl flex items-center justify-center mx-auto mb-4">
                 <Users className="w-8 h-8 text-text-muted" />
               </div>
-              <p className="text-text-muted text-sm">No registered subagents yet. Generate an invite link and share it!</p>
+              <p className="text-text-muted text-sm">No registered subagents yet. Share your invite link above to onboard your first one!</p>
             </div>
           </Card>
         ) : (

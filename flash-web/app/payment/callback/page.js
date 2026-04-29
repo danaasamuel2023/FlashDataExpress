@@ -11,7 +11,14 @@ function PaymentCallbackContent() {
   const router = useRouter();
   const { refreshUser } = useAuth();
   const [status, setStatus] = useState('verifying'); // verifying | success | failed
+  const [isSubAgent, setIsSubAgent] = useState(false);
   const reference = searchParams.get('reference') || searchParams.get('trxref');
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      setIsSubAgent(localStorage.getItem('ds_is_subagent') === 'true');
+    }
+  }, []);
 
   useEffect(() => {
     if (reference) {
@@ -30,6 +37,10 @@ function PaymentCallbackContent() {
       setStatus('failed');
     }
   };
+
+  const homePath = isSubAgent ? '/subagent/dashboard' : '/wallet';
+  const homeLabel = isSubAgent ? 'Go to Dashboard' : 'Go to Wallet';
+  const backLabel = isSubAgent ? 'Back to Dashboard' : 'Back to Wallet';
 
   if (status === 'verifying') {
     return (
@@ -52,7 +63,7 @@ function PaymentCallbackContent() {
           </div>
           <h1 className="text-xl font-bold text-white">Payment Successful!</h1>
           <p className="text-text-muted text-sm mt-2 mb-6">Your wallet has been credited.</p>
-          <Button onClick={() => router.push('/wallet')}>Go to Wallet</Button>
+          <Button onClick={() => router.push(homePath)}>{homeLabel}</Button>
         </div>
       </div>
     );
@@ -66,7 +77,7 @@ function PaymentCallbackContent() {
         </div>
         <h1 className="text-xl font-bold text-white">Payment Failed</h1>
         <p className="text-text-muted text-sm mt-2 mb-6">We couldn&apos;t verify your payment. If you were charged, please contact support.</p>
-        <Button onClick={() => router.push('/wallet')}>Back to Wallet</Button>
+        <Button onClick={() => router.push(homePath)}>{backLabel}</Button>
       </div>
     </div>
   );

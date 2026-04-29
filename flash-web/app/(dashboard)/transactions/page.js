@@ -14,12 +14,29 @@ const TYPE_CONFIG = {
   referral_earning: { label: 'Referral', icon: Gift, color: 'text-accent', bg: 'bg-accent/10', sign: '+' },
 };
 
+const SOURCE_LABELS = {
+  wallet_deposit: 'Wallet deposit',
+  store_activation: 'Store activation',
+  store_purchase: 'Store sale',
+  sub_agent_purchase: 'Sub-agent sale',
+  direct_purchase: 'Direct purchase',
+  momo_purchase: 'MoMo purchase',
+  guest_purchase: 'Guest sale',
+  auto_refund: 'Auto refund',
+  referral: 'Referral earning',
+  withdrawal: 'Withdrawal',
+};
+
 const STATUS_COLORS = {
   completed: 'bg-success/10 text-success',
   pending: 'bg-accent/10 text-accent',
   failed: 'bg-error/10 text-error',
   processing: 'bg-blue-500/10 text-blue-500',
 };
+
+function getSource(tx) {
+  return tx.metadata?.source || (tx.type === 'deposit' ? 'wallet_deposit' : tx.type === 'withdrawal' ? 'withdrawal' : tx.type === 'referral_earning' ? 'referral' : null);
+}
 
 function formatDayLabel(dateStr) {
   const today = new Date();
@@ -36,6 +53,7 @@ export default function TransactionsPage() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState('all');
+  const [sourceFilter, setSourceFilter] = useState('all');
   const [view, setView] = useState('daily'); // 'list' | 'daily'
   const [daily, setDaily] = useState(null);
   const [loadingDaily, setLoadingDaily] = useState(false);
@@ -71,6 +89,7 @@ export default function TransactionsPage() {
 
   const filtered = transactions.filter(tx => {
     if (filter !== 'all' && tx.type !== filter) return false;
+    if (sourceFilter !== 'all' && getSource(tx) !== sourceFilter) return false;
     if (search) {
       const q = search.toLowerCase();
       return (
@@ -80,6 +99,10 @@ export default function TransactionsPage() {
     }
     return true;
   });
+
+  const availableSources = Array.from(new Set(
+    transactions.map(getSource).filter(Boolean)
+  ));
 
   return (
     <div className="space-y-6">
@@ -169,6 +192,7 @@ export default function TransactionsPage() {
                       {day.transactions.map(tx => {
                         const config = TYPE_CONFIG[tx.type] || TYPE_CONFIG.purchase;
                         const Icon = config.icon;
+                        const source = getSource(tx);
                         return (
                           <div key={tx._id} className="flex items-center gap-3 py-2">
                             <div className={`w-8 h-8 ${config.bg} rounded-lg flex items-center justify-center flex-shrink-0`}>
@@ -176,7 +200,14 @@ export default function TransactionsPage() {
                             </div>
                             <div className="flex-1 min-w-0">
                               <p className="text-xs font-semibold text-white truncate">{tx.description || config.label}</p>
-                              <p className="text-[10px] text-text-muted">{formatDate(tx.createdAt)} · {tx.reference}</p>
+                              <div className="flex items-center gap-1.5 mt-0.5">
+                                {source && (
+                                  <span className="text-[9px] font-bold text-accent bg-accent/10 px-1.5 py-0.5 rounded-full">
+                                    {SOURCE_LABELS[source] || source}
+                                  </span>
+                                )}
+                                <p className="text-[10px] text-text-muted truncate">{formatDate(tx.createdAt)} · {tx.reference}</p>
+                              </div>
                             </div>
                             <div className="text-right">
                               <p className={`text-xs font-extrabold ${config.sign === '+' ? 'text-success' : 'text-text'}`}>
@@ -226,6 +257,31 @@ export default function TransactionsPage() {
         </div>
       </div>
 
+      {/* Source filter — identifies things like store activation vs wallet deposit */}
+      {availableSources.length > 0 && (
+        <div className="flex gap-2 overflow-x-auto pb-1 -mt-1">
+          <button
+            onClick={() => setSourceFilter('all')}
+            className={`px-3 py-2 rounded-xl text-xs font-semibold whitespace-nowrap transition-all ${
+              sourceFilter === 'all' ? 'bg-accent text-white' : 'bg-surface-light text-text-muted hover:bg-white/5'
+            }`}
+          >
+            All sources
+          </button>
+          {availableSources.map(src => (
+            <button
+              key={src}
+              onClick={() => setSourceFilter(src)}
+              className={`px-3 py-2 rounded-xl text-xs font-semibold whitespace-nowrap transition-all ${
+                sourceFilter === src ? 'bg-accent text-white' : 'bg-surface-light text-text-muted hover:bg-white/5'
+              }`}
+            >
+              {SOURCE_LABELS[src] || src}
+            </button>
+          ))}
+        </div>
+      )}
+
       {/* Transaction list */}
       {loading ? (
         <div className="flex items-center justify-center py-16">
@@ -244,6 +300,7 @@ export default function TransactionsPage() {
           {filtered.map(tx => {
             const config = TYPE_CONFIG[tx.type] || TYPE_CONFIG.purchase;
             const Icon = config.icon;
+            const source = getSource(tx);
             return (
               <Card key={tx._id} className="!p-4">
                 <div className="flex items-center gap-3">
@@ -254,9 +311,16 @@ export default function TransactionsPage() {
                     <p className="font-semibold text-sm text-text truncate">
                       {tx.description || config.label}
                     </p>
-                    <p className="text-xs text-text-muted mt-0.5">
-                      {formatDate(tx.createdAt)} &middot; {tx.reference}
-                    </p>
+                    <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
+                      {source && (
+                        <span className="text-[10px] font-bold text-accent bg-accent/10 px-1.5 py-0.5 rounded-full whitespace-nowrap">
+                          {SOURCE_LABELS[source] || source}
+                        </span>
+                      )}
+                      <p className="text-xs text-text-muted truncate">
+                        {formatDate(tx.createdAt)} &middot; {tx.reference}
+                      </p>
+                    </div>
                   </div>
                   <div className="text-right flex-shrink-0">
                     <p className={`font-extrabold text-sm ${

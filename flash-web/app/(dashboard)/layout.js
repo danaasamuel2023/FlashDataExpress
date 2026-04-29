@@ -54,7 +54,14 @@ export default function DashboardLayout({ children }) {
   }, [pathname, isMobile]);
 
   useEffect(() => {
-    if (!loading && !user) router.push('/sign-in');
+    if (!loading && !user) {
+      router.push('/sign-in');
+      return;
+    }
+    if (!loading && user && typeof window !== 'undefined') {
+      const isSubAgent = localStorage.getItem('ds_is_subagent') === 'true';
+      if (isSubAgent) router.replace('/subagent/dashboard');
+    }
   }, [user, loading, router]);
 
   if (loading || !user) {
