@@ -8,6 +8,33 @@ const datamartService = require('../services/datamartService');
 const { generateReference } = require('../utils/helpers');
 const { refundFailedPurchase } = require('../utils/refund');
 
+// Orders that have been pending/processing for longer than this are auto-refunded.
+const STALE_ORDER_MS = 24 * 60 * 60 * 1000;
+
+async function autoRefundStaleOrders() {
+  try {
+    const cutoff = new Date(Date.now() - STALE_ORDER_MS);
+    // Anything (including failed orders that never got refunded) older than 24h
+    // and not yet completed/refunded gets auto-refunded.
+    const stale = await DataPurchase.find({
+      status: { $in: ['pending', 'processing', 'failed'] },
+      createdAt: { $lt: cutoff },
+    }).limit(50);
+
+    for (const order of stale) {
+      try {
+        const reason = order.failureReason
+          || 'Order not delivered within 24 hours — auto-refunded';
+        await refundFailedPurchase(order, reason);
+      } catch (refundErr) {
+        console.error('24h auto-refund failed:', refundErr.message, 'ref:', order.reference);
+      }
+    }
+  } catch (err) {
+    console.error('24h auto-refund sweep error:', err.message);
+  }
+}
+
 async function checkPendingOrders() {
   try {
     const pending = await DataPurchase.find({
@@ -16,7 +43,7 @@ async function checkPendingOrders() {
         { datamartReference: { $exists: true, $ne: null } },
         { ghustReference: { $exists: true, $ne: null } },
       ],
-      createdAt: { $gte: new Date(Date.now() - 24 * 60 * 60 * 1000) },
+      createdAt: { $gte: new Date(Date.now() - STALE_ORDER_MS) },
     }).limit(50);
 
     for (const order of pending) {
@@ -92,8 +119,12 @@ async function checkPendingOrders() {
 function startOrderStatusChecker() {
   console.log('Order status checker started');
   setInterval(checkPendingOrders, 2 * 60 * 1000);
+  // 24h auto-refund sweep runs every 15 minutes — catches anything that has
+  // been stuck past the deadline regardless of provider status.
+  setInterval(autoRefundStaleOrders, 15 * 60 * 1000);
   // Run immediately on startup
   setTimeout(checkPendingOrders, 10000);
+  setTimeout(autoRefundStaleOrders, 30000);
 }
 
 module.exports = { startOrderStatusChecker };

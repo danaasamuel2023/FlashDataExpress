@@ -1,6 +1,6 @@
 'use client';
 import { useState, useEffect } from 'react';
-import { Users, ShoppingBag, Wallet, TrendingUp, Loader2, RefreshCw, DollarSign, CalendarDays, Pause, Play, AlertTriangle } from 'lucide-react';
+import { Users, ShoppingBag, Wallet, TrendingUp, Loader2, RefreshCw, DollarSign, CalendarDays, Pause, Play, AlertTriangle, Store as StoreIcon, Globe } from 'lucide-react';
 import toast from 'react-hot-toast';
 import Card from '@/components/ui/Card';
 import { formatCurrency, formatDate, NETWORKS } from '@/lib/constants';
@@ -15,15 +15,19 @@ export default function AdminOverviewPage() {
   const [fetchingPrices, setFetchingPrices] = useState(false);
   const [dailySales, setDailySales] = useState(null);
   const [loadingDaily, setLoadingDaily] = useState(false);
+  const [salesSource, setSalesSource] = useState('portal'); // 'portal' | 'store'
   const [ordersPaused, setOrdersPaused] = useState(false);
   const [pauseMessage, setPauseMessage] = useState('');
   const [togglingPause, setTogglingPause] = useState(false);
 
   useEffect(() => {
     fetchStats();
-    fetchDailySales();
     fetchOrdersStatus();
   }, []);
+
+  useEffect(() => {
+    fetchDailySales();
+  }, [salesSource]);
 
   const fetchOrdersStatus = async () => {
     try {
@@ -63,7 +67,7 @@ export default function AdminOverviewPage() {
   const fetchDailySales = async () => {
     setLoadingDaily(true);
     try {
-      const res = await api.get('/admin/daily-sales');
+      const res = await api.get(`/admin/daily-sales?source=${salesSource}`);
       setDailySales(res.data.data);
     } catch {
       // silently fail
@@ -96,14 +100,11 @@ export default function AdminOverviewPage() {
     { label: 'Total Users', value: stats?.totalUsers || 0, icon: Users, color: 'primary' },
     { label: 'Total Orders', value: stats?.totalOrders || 0, icon: ShoppingBag, color: 'success' },
     { label: 'Revenue', value: formatCurrency(stats?.totalRevenue || 0), icon: TrendingUp, color: 'accent' },
-    { label: 'Deposits', value: formatCurrency(stats?.totalDeposits || 0), icon: Wallet, color: 'blue-500' },
+    { label: 'Stores Activated', value: stats?.totalStoresActivated || 0, icon: StoreIcon, color: 'blue-500' },
   ];
 
-  const todayCards = [
-    { label: "Today's Orders", value: stats?.todayOrders || 0, icon: CalendarDays, color: 'primary' },
-    { label: "Today's Sales", value: formatCurrency(stats?.todayRevenue || 0), icon: ShoppingBag, color: 'success' },
-    { label: "Today's Profit", value: formatCurrency(stats?.todayProfit || 0), icon: DollarSign, color: 'accent' },
-  ];
+  const portalToday = stats?.todayPortal || { orders: 0, revenue: 0, profit: 0 };
+  const storeToday = stats?.todayStore || { orders: 0, revenue: 0, profit: 0 };
 
   // Build comparison table: network → capacity → { selling, base }
   const sellingPrices = stats?.sellingPrices || {};
@@ -158,26 +159,89 @@ export default function AdminOverviewPage() {
         </div>
       </Card>
 
-      {/* Today's stats */}
+      {/* Today's stats — Main Portal */}
       <div>
-        <h2 className="font-bold text-sm text-text-muted uppercase tracking-wider mb-3">Today</h2>
+        <div className="flex items-center gap-2 mb-3">
+          <Globe className="w-4 h-4 text-primary" />
+          <h2 className="font-bold text-sm text-text-muted uppercase tracking-wider">Today &middot; Main Portal</h2>
+        </div>
         <div className="grid grid-cols-3 gap-4">
-          {todayCards.map((card, i) => {
-            const Icon = card.icon;
-            return (
-              <Card key={i}>
-                <div className="flex items-center gap-3">
-                  <div className={`w-12 h-12 bg-${card.color}/10 rounded-xl flex items-center justify-center`}>
-                    <Icon className={`w-6 h-6 text-${card.color}`} />
-                  </div>
-                  <div>
-                    <p className="text-2xl font-extrabold text-white">{card.value}</p>
-                    <p className="text-xs text-text-muted">{card.label}</p>
-                  </div>
-                </div>
-              </Card>
-            );
-          })}
+          <Card>
+            <div className="flex items-center gap-3">
+              <div className="w-12 h-12 bg-primary/10 rounded-xl flex items-center justify-center">
+                <CalendarDays className="w-6 h-6 text-primary" />
+              </div>
+              <div>
+                <p className="text-2xl font-extrabold text-white">{portalToday.orders}</p>
+                <p className="text-xs text-text-muted">Portal Orders</p>
+              </div>
+            </div>
+          </Card>
+          <Card>
+            <div className="flex items-center gap-3">
+              <div className="w-12 h-12 bg-success/10 rounded-xl flex items-center justify-center">
+                <ShoppingBag className="w-6 h-6 text-success" />
+              </div>
+              <div>
+                <p className="text-2xl font-extrabold text-white">{formatCurrency(portalToday.revenue)}</p>
+                <p className="text-xs text-text-muted">Portal Sales</p>
+              </div>
+            </div>
+          </Card>
+          <Card>
+            <div className="flex items-center gap-3">
+              <div className="w-12 h-12 bg-accent/10 rounded-xl flex items-center justify-center">
+                <DollarSign className="w-6 h-6 text-accent" />
+              </div>
+              <div>
+                <p className="text-2xl font-extrabold text-white">{formatCurrency(portalToday.profit)}</p>
+                <p className="text-xs text-text-muted">Portal Profit</p>
+              </div>
+            </div>
+          </Card>
+        </div>
+      </div>
+
+      {/* Today's stats — Agent Stores */}
+      <div>
+        <div className="flex items-center gap-2 mb-3">
+          <StoreIcon className="w-4 h-4 text-blue-500" />
+          <h2 className="font-bold text-sm text-text-muted uppercase tracking-wider">Today &middot; Agent Stores</h2>
+        </div>
+        <div className="grid grid-cols-3 gap-4">
+          <Card>
+            <div className="flex items-center gap-3">
+              <div className="w-12 h-12 bg-blue-500/10 rounded-xl flex items-center justify-center">
+                <CalendarDays className="w-6 h-6 text-blue-500" />
+              </div>
+              <div>
+                <p className="text-2xl font-extrabold text-white">{storeToday.orders}</p>
+                <p className="text-xs text-text-muted">Store Orders</p>
+              </div>
+            </div>
+          </Card>
+          <Card>
+            <div className="flex items-center gap-3">
+              <div className="w-12 h-12 bg-success/10 rounded-xl flex items-center justify-center">
+                <ShoppingBag className="w-6 h-6 text-success" />
+              </div>
+              <div>
+                <p className="text-2xl font-extrabold text-white">{formatCurrency(storeToday.revenue)}</p>
+                <p className="text-xs text-text-muted">Store Sales</p>
+              </div>
+            </div>
+          </Card>
+          <Card>
+            <div className="flex items-center gap-3">
+              <div className="w-12 h-12 bg-accent/10 rounded-xl flex items-center justify-center">
+                <DollarSign className="w-6 h-6 text-accent" />
+              </div>
+              <div>
+                <p className="text-2xl font-extrabold text-white">{formatCurrency(storeToday.profit)}</p>
+                <p className="text-xs text-text-muted">Platform Margin</p>
+              </div>
+            </div>
+          </Card>
         </div>
       </div>
 
@@ -286,7 +350,7 @@ export default function AdminOverviewPage() {
 
       {/* Today's Sales History */}
       <Card>
-        <div className="flex items-center justify-between mb-4">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
           <div>
             <h2 className="font-bold text-white">Today&apos;s Sales History</h2>
             {dailySales && (
@@ -295,14 +359,34 @@ export default function AdminOverviewPage() {
               </p>
             )}
           </div>
-          <button
-            onClick={fetchDailySales}
-            disabled={loadingDaily}
-            className="flex items-center gap-1.5 text-xs font-bold text-primary hover:text-primary/80 transition-colors disabled:opacity-50"
-          >
-            <RefreshCw className={`w-3.5 h-3.5 ${loadingDaily ? 'animate-spin' : ''}`} />
-            Refresh
-          </button>
+          <div className="flex items-center gap-2">
+            <div className="flex bg-surface-light rounded-lg p-0.5">
+              <button
+                onClick={() => setSalesSource('portal')}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-bold transition-colors ${
+                  salesSource === 'portal' ? 'bg-primary text-white' : 'text-text-muted hover:text-white'
+                }`}
+              >
+                <Globe className="w-3.5 h-3.5" /> Portal
+              </button>
+              <button
+                onClick={() => setSalesSource('store')}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-bold transition-colors ${
+                  salesSource === 'store' ? 'bg-blue-500 text-white' : 'text-text-muted hover:text-white'
+                }`}
+              >
+                <StoreIcon className="w-3.5 h-3.5" /> Stores
+              </button>
+            </div>
+            <button
+              onClick={fetchDailySales}
+              disabled={loadingDaily}
+              className="flex items-center gap-1.5 text-xs font-bold text-primary hover:text-primary/80 transition-colors disabled:opacity-50"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${loadingDaily ? 'animate-spin' : ''}`} />
+              Refresh
+            </button>
+          </div>
         </div>
         {loadingDaily ? (
           <div className="flex justify-center py-8"><Loader2 className="w-5 h-5 text-primary animate-spin" /></div>

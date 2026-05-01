@@ -1,38 +1,16 @@
 const User = require('../models/User');
-const Store = require('../models/Store');
-const SubAgent = require('../models/SubAgent');
 const Transaction = require('../models/Transaction');
 const { generateReference } = require('./helpers');
 
-// Credits the buyer's wallet and reverses any agent/sub-agent profit credits
-// that were applied at purchase time. Idempotent: skips if already refunded.
+// Credits the buyer's wallet with the selling price. Agent/sub-agent profit
+// credited at purchase time is left intact — profit is earned at the point of
+// sale and is not clawed back on refund. Idempotent: skips if already refunded.
 async function refundFailedPurchase(purchase, reason) {
   if (!purchase || purchase.status === 'refunded' || purchase.refundedAt) {
     return { refunded: false, skipped: 'already_refunded' };
   }
 
   const amount = purchase.price || 0;
-
-  if (purchase.purchaseSource === 'store' && purchase.storeDetails?.profitCredited) {
-    const agentProfit = purchase.storeDetails.agentProfit || 0;
-    const subAgentProfit = purchase.storeDetails.subAgentProfit || 0;
-    const storeId = purchase.storeDetails.storeId;
-    const subAgentId = purchase.storeDetails.subAgentId;
-
-    if (storeId && agentProfit > 0) {
-      await Store.findOneAndUpdate(
-        { _id: storeId },
-        { $inc: { totalEarnings: -agentProfit, pendingBalance: -agentProfit, totalSales: -1 } }
-      );
-    }
-    if (subAgentId && subAgentProfit > 0) {
-      await SubAgent.findOneAndUpdate(
-        { _id: subAgentId },
-        { $inc: { totalEarnings: -subAgentProfit, pendingBalance: -subAgentProfit, totalSales: -1 } }
-      );
-    }
-    purchase.storeDetails.profitCredited = false;
-  }
 
   let creditedTo = null;
   if (purchase.userId && amount > 0) {

@@ -1,7 +1,7 @@
 'use client';
 import { useState, useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { Store, Type, FileText, Phone, Palette, CreditCard, Loader2, Check, AlertCircle } from 'lucide-react';
+import { Store, Type, FileText, Phone, Palette, CreditCard, Loader2, Check, AlertCircle, PlayCircle, ExternalLink } from 'lucide-react';
 import toast from 'react-hot-toast';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
@@ -138,6 +138,33 @@ export default function StoreSetupPage() {
               Pay once to activate your store. After payment, you can start selling data and earning profit immediately.
             </p>
           </div>
+        </div>
+      </Card>
+
+      {/* How the Agent Store works — tutorial */}
+      <Card>
+        <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center gap-2">
+            <PlayCircle className="w-5 h-5 text-primary" />
+            <h2 className="font-bold text-white">How the Agent Store works</h2>
+          </div>
+          <a
+            href="https://youtu.be/Q9IBlTiPLCA"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1 text-xs font-bold text-primary hover:text-primary/80"
+          >
+            YouTube <ExternalLink className="w-3 h-3" />
+          </a>
+        </div>
+        <div className="relative w-full aspect-video rounded-xl overflow-hidden bg-black">
+          <iframe
+            src="https://www.youtube.com/embed/Q9IBlTiPLCA"
+            title="How the Agent Store works"
+            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+            allowFullScreen
+            className="absolute inset-0 w-full h-full"
+          />
         </div>
       </Card>
 

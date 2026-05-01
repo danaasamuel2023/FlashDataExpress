@@ -98,20 +98,42 @@ export default function StoreDashboardPage() {
 
   if (!store) {
     return (
-      <div className="max-w-lg mx-auto text-center py-16">
-        <div className="w-20 h-20 bg-primary/10 rounded-3xl flex items-center justify-center mx-auto mb-6">
-          <Store className="w-10 h-10 text-primary" />
+      <div className="max-w-2xl mx-auto py-12 space-y-8">
+        <div className="text-center">
+          <div className="w-20 h-20 bg-primary/10 rounded-3xl flex items-center justify-center mx-auto mb-6">
+            <Store className="w-10 h-10 text-primary" />
+          </div>
+          <h1 className="text-2xl font-extrabold text-white">Start your data store</h1>
+          <p className="text-text-muted mt-2 mb-2 max-w-sm mx-auto">
+            Create your own branded data store, set custom prices, and earn profit on every sale.
+          </p>
+          <p className="text-primary font-semibold text-sm mb-6">One-time activation: GH₵50</p>
+          <Link href="/store/setup">
+            <Button size="lg">
+              <Store className="w-4 h-4" /> Create Store
+            </Button>
+          </Link>
         </div>
-        <h1 className="text-2xl font-extrabold text-white">Start your data store</h1>
-        <p className="text-text-muted mt-2 mb-2 max-w-sm mx-auto">
-          Create your own branded data store, set custom prices, and earn profit on every sale.
-        </p>
-        <p className="text-primary font-semibold text-sm mb-8">One-time activation: GH₵50</p>
-        <Link href="/store/setup">
-          <Button size="lg">
-            <Store className="w-4 h-4" /> Create Store
-          </Button>
-        </Link>
+
+        {/* How the Agent Store works — tutorial video */}
+        <Card>
+          <div className="flex items-center gap-2 mb-3">
+            <PlayCircle className="w-5 h-5 text-primary" />
+            <h2 className="font-bold text-white">How the Agent Store works</h2>
+          </div>
+          <p className="text-xs text-text-muted mb-3">
+            Watch this short walkthrough to see how to set up your store, manage prices, and earn from every sale.
+          </p>
+          <div className="relative w-full aspect-video rounded-xl overflow-hidden bg-black">
+            <iframe
+              src="https://www.youtube.com/embed/Q9IBlTiPLCA"
+              title="How the Agent Store works"
+              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+              allowFullScreen
+              className="absolute inset-0 w-full h-full"
+            />
+          </div>
+        </Card>
       </div>
     );
   }
@@ -399,6 +421,33 @@ export default function StoreDashboardPage() {
           </div>
         </Card>
       )}
+
+      {/* How the Agent Store works — tutorial video */}
+      <Card>
+        <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center gap-2">
+            <PlayCircle className="w-5 h-5 text-primary" />
+            <h2 className="font-bold text-white">How the Agent Store works</h2>
+          </div>
+          <a
+            href="https://youtu.be/Q9IBlTiPLCA"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1 text-xs font-bold text-primary hover:text-primary/80"
+          >
+            Open on YouTube <ExternalLink className="w-3 h-3" />
+          </a>
+        </div>
+        <div className="relative w-full aspect-video rounded-xl overflow-hidden bg-black">
+          <iframe
+            src="https://www.youtube.com/embed/Q9IBlTiPLCA"
+            title="How the Agent Store works"
+            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+            allowFullScreen
+            className="absolute inset-0 w-full h-full"
+          />
+        </div>
+      </Card>
 
       {/* Quick links */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
