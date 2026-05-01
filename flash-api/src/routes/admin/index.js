@@ -16,16 +16,23 @@ const { encrypt, mask, isConfigured } = require('../../utils/encryption');
 // All admin routes require auth + admin
 router.use(auth, adminAuth);
 
+// Sales from the main portal: direct wallet, MoMo top-ups, and guest checkouts.
+// Anything from an agent's store/subshop is excluded.
+const PORTAL_SOURCES = ['direct', 'guest'];
+const STORE_SOURCES = ['store'];
+
 // GET /api/admin/dashboard
 router.get('/dashboard', async (req, res) => {
   try {
     const todayStart = new Date();
     todayStart.setHours(0, 0, 0, 0);
 
+    const todayActiveStatuses = ['completed', 'processing', 'pending'];
+
     const [
       totalUsers, totalOrders, revenueAgg, depositsAgg,
-      todayOrders, todayRevenueAgg, todayProfitAgg,
-      recentOrders, settings
+      todayOrdersBySource, todayBySource,
+      recentOrders, settings, totalStoresActivated
     ] = await Promise.all([
       User.countDocuments(),
       DataPurchase.countDocuments(),
@@ -37,25 +44,43 @@ router.get('/dashboard', async (req, res) => {
         { $match: { type: 'deposit', status: 'completed' } },
         { $group: { _id: null, total: { $sum: '$amount' } } },
       ]),
-      // Today's order count
-      DataPurchase.countDocuments({ createdAt: { $gte: todayStart } }),
-      // Today's revenue (selling price)
+      // Today's order count by source
       DataPurchase.aggregate([
-        { $match: { createdAt: { $gte: todayStart }, status: { $in: ['completed', 'processing', 'pending'] } } },
-        { $group: { _id: null, total: { $sum: '$price' } } },
+        { $match: { createdAt: { $gte: todayStart } } },
+        { $group: { _id: '$purchaseSource', count: { $sum: 1 } } },
       ]),
-      // Today's profit (selling price - cost price)
+      // Today's revenue + profit by source
       DataPurchase.aggregate([
-        { $match: { createdAt: { $gte: todayStart }, status: { $in: ['completed', 'processing', 'pending'] } } },
-        { $group: { _id: null, revenue: { $sum: '$price' }, cost: { $sum: '$costPrice' } } },
+        { $match: { createdAt: { $gte: todayStart }, status: { $in: todayActiveStatuses } } },
+        {
+          $group: {
+            _id: '$purchaseSource',
+            revenue: { $sum: '$price' },
+            cost: { $sum: '$costPrice' },
+          },
+        },
       ]),
       DataPurchase.find().sort({ createdAt: -1 }).limit(10).lean(),
       Settings.getSettings(),
+      Store.countDocuments(),
     ]);
 
-    const todayProfit = todayProfitAgg[0]
-      ? (todayProfitAgg[0].revenue - todayProfitAgg[0].cost)
-      : 0;
+    const sumBy = (arr, predicate, field) =>
+      arr.filter(predicate).reduce((s, b) => s + (b[field] || 0), 0);
+
+    const isPortal = (b) => PORTAL_SOURCES.includes(b._id);
+    const isStore = (b) => STORE_SOURCES.includes(b._id);
+
+    const portal = {
+      orders: sumBy(todayOrdersBySource, isPortal, 'count'),
+      revenue: sumBy(todayBySource, isPortal, 'revenue'),
+      profit: sumBy(todayBySource, isPortal, 'revenue') - sumBy(todayBySource, isPortal, 'cost'),
+    };
+    const store = {
+      orders: sumBy(todayOrdersBySource, isStore, 'count'),
+      revenue: sumBy(todayBySource, isStore, 'revenue'),
+      profit: sumBy(todayBySource, isStore, 'revenue') - sumBy(todayBySource, isStore, 'cost'),
+    };
 
     res.json({
       status: 'success',
@@ -64,9 +89,14 @@ router.get('/dashboard', async (req, res) => {
         totalOrders,
         totalRevenue: revenueAgg[0]?.total || 0,
         totalDeposits: depositsAgg[0]?.total || 0,
-        todayOrders,
-        todayRevenue: todayRevenueAgg[0]?.total || 0,
-        todayProfit,
+        totalStoresActivated,
+        // Combined today totals (kept for backwards compatibility)
+        todayOrders: portal.orders + store.orders,
+        todayRevenue: portal.revenue + store.revenue,
+        todayProfit: portal.profit + store.profit,
+        // Split: main portal vs agent stores
+        todayPortal: portal,
+        todayStore: store,
         basePrices: settings?.pricing?.basePrices || {},
         sellingPrices: settings?.pricing?.sellingPrices || {},
         recentOrders,
@@ -156,12 +186,18 @@ router.get('/daily-history', async (req, res) => {
 });
 
 // GET /api/admin/daily-sales - Today's individual sales
+// Query: ?source=portal | store (default: all)
 router.get('/daily-sales', async (req, res) => {
   try {
     const todayStart = new Date();
     todayStart.setHours(0, 0, 0, 0);
 
-    const sales = await DataPurchase.find({ createdAt: { $gte: todayStart } })
+    const source = String(req.query.source || '').toLowerCase();
+    const filter = { createdAt: { $gte: todayStart } };
+    if (source === 'portal') filter.purchaseSource = { $in: PORTAL_SOURCES };
+    else if (source === 'store') filter.purchaseSource = { $in: STORE_SOURCES };
+
+    const sales = await DataPurchase.find(filter)
       .sort({ createdAt: -1 })
       .limit(200)
       .lean();
@@ -171,10 +207,121 @@ router.get('/daily-sales', async (req, res) => {
 
     res.json({
       status: 'success',
-      data: { sales, totalRevenue, totalProfit, count: sales.length },
+      data: { sales, totalRevenue, totalProfit, count: sales.length, source: source || 'all' },
     });
   } catch (err) {
     console.error('Admin error:', err.message);
+    res.status(500).json({ status: 'error', message: 'Something went wrong. Please try again.' });
+  }
+});
+
+// GET /api/admin/stores - List all activated stores with today + lifetime stats.
+// Use this to see who has activated a store and how their sales are doing.
+router.get('/stores', async (req, res) => {
+  try {
+    const stores = await Store.find()
+      .populate('agentId', 'name email phone')
+      .sort({ createdAt: -1 })
+      .lean();
+
+    const todayStart = new Date();
+    todayStart.setHours(0, 0, 0, 0);
+
+    const storeIds = stores.map(s => s._id);
+    const todayAgg = await DataPurchase.aggregate([
+      {
+        $match: {
+          'storeDetails.storeId': { $in: storeIds },
+          createdAt: { $gte: todayStart },
+          status: { $in: ['completed', 'processing', 'pending'] },
+        },
+      },
+      {
+        $group: {
+          _id: '$storeDetails.storeId',
+          revenue: { $sum: '$price' },
+          profit: { $sum: '$storeDetails.agentProfit' },
+          count: { $sum: 1 },
+        },
+      },
+    ]);
+
+    const todayByStore = new Map(todayAgg.map(t => [String(t._id), t]));
+
+    const data = stores.map(s => {
+      const today = todayByStore.get(String(s._id)) || { revenue: 0, profit: 0, count: 0 };
+      return {
+        _id: s._id,
+        storeName: s.storeName,
+        storeSlug: s.storeSlug,
+        isActive: s.isActive,
+        contactPhone: s.contactPhone,
+        agent: s.agentId ? {
+          _id: s.agentId._id,
+          name: s.agentId.name,
+          email: s.agentId.email,
+          phone: s.agentId.phone,
+        } : null,
+        activatedAt: s.createdAt,
+        totalSales: s.totalSales || 0,
+        totalEarnings: s.totalEarnings || 0,
+        pendingBalance: s.pendingBalance || 0,
+        todayRevenue: today.revenue,
+        todayProfit: today.profit,
+        todaySales: today.count,
+      };
+    });
+
+    res.json({ status: 'success', data });
+  } catch (err) {
+    console.error('Admin stores error:', err.message);
+    res.status(500).json({ status: 'error', message: 'Something went wrong. Please try again.' });
+  }
+});
+
+// GET /api/admin/stores/:id/daily-sales - Today's sales for a specific agent store
+router.get('/stores/:id/daily-sales', async (req, res) => {
+  try {
+    const store = await Store.findById(req.params.id).populate('agentId', 'name email');
+    if (!store) {
+      return res.status(404).json({ status: 'error', message: 'Store not found' });
+    }
+
+    const todayStart = new Date();
+    todayStart.setHours(0, 0, 0, 0);
+
+    const sales = await DataPurchase.find({
+      'storeDetails.storeId': store._id,
+      createdAt: { $gte: todayStart },
+    })
+      .sort({ createdAt: -1 })
+      .limit(200)
+      .lean();
+
+    const todayRevenue = sales.reduce((sum, s) => sum + (s.price || 0), 0);
+    const todayProfit = sales.reduce((sum, s) => sum + (s.storeDetails?.agentProfit || 0), 0);
+
+    res.json({
+      status: 'success',
+      data: {
+        store: {
+          _id: store._id,
+          storeName: store.storeName,
+          storeSlug: store.storeSlug,
+          agent: store.agentId,
+          activatedAt: store.createdAt,
+          totalSales: store.totalSales || 0,
+          totalEarnings: store.totalEarnings || 0,
+          pendingBalance: store.pendingBalance || 0,
+        },
+        sales,
+        todayRevenue,
+        todayProfit,
+        count: sales.length,
+      },
+    });
+  } catch (err) {
+    console.error('Admin store daily-sales error:', err.message);
     res.status(500).json({ status: 'error', message: 'Something went wrong. Please try again.' });
   }
 });
