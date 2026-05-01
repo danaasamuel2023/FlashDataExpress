@@ -1,6 +1,6 @@
 'use client';
 import { useState, useEffect } from 'react';
-import { Store, TrendingUp, Wallet, ShoppingBag, ExternalLink, Loader2, Copy, Check, Users, MessageCircle, Phone, Clock, DollarSign, CalendarDays, RefreshCw, ChevronDown, ChevronUp } from 'lucide-react';
+import { Store, TrendingUp, Wallet, ShoppingBag, ExternalLink, Loader2, Copy, Check, Users, MessageCircle, Phone, Clock, DollarSign, CalendarDays, RefreshCw, ChevronDown, ChevronUp, PlayCircle } from 'lucide-react';
 import Link from 'next/link';
 import toast from 'react-hot-toast';
 import Card from '@/components/ui/Card';
@@ -135,6 +135,27 @@ export default function StoreDashboardPage() {
           </Link>
         </div>
       </div>
+
+      {/* Tutorial video — how the store works */}
+      <a
+        href="https://whatsapp.com/channel/0029VbByiD37DAWv3LzCXM42/653"
+        target="_blank"
+        rel="noopener noreferrer"
+        className="block"
+      >
+        <Card hover className="!border-primary/20 bg-gradient-to-r from-primary/10 to-primary/5">
+          <div className="flex items-center gap-3 sm:gap-4">
+            <div className="w-12 h-12 bg-primary/20 rounded-xl flex items-center justify-center flex-shrink-0">
+              <PlayCircle className="w-6 h-6 text-primary" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="font-bold text-white text-sm">Watch: How the Agent Store works</p>
+              <p className="text-xs text-text-muted mt-0.5">Quick video walkthrough on our WhatsApp channel.</p>
+            </div>
+            <ExternalLink className="w-4 h-4 text-primary flex-shrink-0" />
+          </div>
+        </Card>
+      </a>
 
       {/* Today's stats — reset at midnight */}
       <div>
