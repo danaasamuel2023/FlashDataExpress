@@ -8,7 +8,6 @@ const paystackService = require('../services/paystackService');
 const datamartService = require('../services/datamartService');
 const SubAgent = require('../models/SubAgent');
 const { generateReference } = require('../utils/helpers');
-const { refundFailedPurchase } = require('../utils/refund');
 const ordersPaused = require('../middleware/ordersPaused');
 
 // GET /api/shop/:slug
@@ -223,14 +222,10 @@ router.get('/:slug/verify-payment', async (req, res) => {
       }
       await purchase.save();
     } catch (err) {
+      // Auto-refund disabled — admin must refund manually from /admin/refunds.
       purchase.status = 'failed';
       purchase.failureReason = err.message;
       await purchase.save();
-      try {
-        await refundFailedPurchase(purchase, err.message);
-      } catch (refundErr) {
-        console.error('Store auto-refund failed:', refundErr.message, 'ref:', purchase.reference);
-      }
     }
 
     res.json({ status: 'success', data: purchase });

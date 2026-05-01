@@ -1,39 +1,12 @@
 const DataPurchase = require('../models/DataPurchase');
 const Store = require('../models/Store');
 const SubAgent = require('../models/SubAgent');
-const User = require('../models/User');
-const Transaction = require('../models/Transaction');
 const datamartService = require('../services/datamartService');
 // All purchases go through DataMart
-const { generateReference } = require('../utils/helpers');
-const { refundFailedPurchase } = require('../utils/refund');
 
-// Orders that have been pending/processing for longer than this are auto-refunded.
-const STALE_ORDER_MS = 24 * 60 * 60 * 1000;
-
-async function autoRefundStaleOrders() {
-  try {
-    const cutoff = new Date(Date.now() - STALE_ORDER_MS);
-    // Anything (including failed orders that never got refunded) older than 24h
-    // and not yet completed/refunded gets auto-refunded.
-    const stale = await DataPurchase.find({
-      status: { $in: ['pending', 'processing', 'failed'] },
-      createdAt: { $lt: cutoff },
-    }).limit(50);
-
-    for (const order of stale) {
-      try {
-        const reason = order.failureReason
-          || 'Order not delivered within 24 hours — auto-refunded';
-        await refundFailedPurchase(order, reason);
-      } catch (refundErr) {
-        console.error('24h auto-refund failed:', refundErr.message, 'ref:', order.reference);
-      }
-    }
-  } catch (err) {
-    console.error('24h auto-refund sweep error:', err.message);
-  }
-}
+// Auto-refunds are disabled: failed/stale orders are flagged but never refunded
+// automatically. Admin must reverse or refund from the /admin/refunds page.
+const STALE_LOOKBACK_MS = 24 * 60 * 60 * 1000;
 
 async function checkPendingOrders() {
   try {
@@ -43,7 +16,7 @@ async function checkPendingOrders() {
         { datamartReference: { $exists: true, $ne: null } },
         { ghustReference: { $exists: true, $ne: null } },
       ],
-      createdAt: { $gte: new Date(Date.now() - STALE_ORDER_MS) },
+      createdAt: { $gte: new Date(Date.now() - STALE_LOOKBACK_MS) },
     }).limit(50);
 
     for (const order of pending) {
@@ -96,15 +69,10 @@ async function checkPendingOrders() {
             await order.save();
           }
         } else if (newStatus === 'failed' || newStatus === 'rejected') {
-          const failureReason = result.message || 'Order failed at provider';
+          // Mark failed only — admin issues the refund manually from /admin/refunds.
           order.status = 'failed';
-          order.failureReason = failureReason;
+          order.failureReason = result.message || 'Order failed at provider';
           await order.save();
-          try {
-            await refundFailedPurchase(order, failureReason);
-          } catch (refundErr) {
-            console.error('Auto-refund failed in status checker:', refundErr.message, 'ref:', order.reference);
-          }
         }
       } catch (err) {
         // Skip individual order errors
@@ -117,14 +85,10 @@ async function checkPendingOrders() {
 
 // Run every 2 minutes
 function startOrderStatusChecker() {
-  console.log('Order status checker started');
+  console.log('Order status checker started (auto-refunds disabled)');
   setInterval(checkPendingOrders, 2 * 60 * 1000);
-  // 24h auto-refund sweep runs every 15 minutes — catches anything that has
-  // been stuck past the deadline regardless of provider status.
-  setInterval(autoRefundStaleOrders, 15 * 60 * 1000);
   // Run immediately on startup
   setTimeout(checkPendingOrders, 10000);
-  setTimeout(autoRefundStaleOrders, 30000);
 }
 
 module.exports = { startOrderStatusChecker };

@@ -38,11 +38,11 @@ export default function AdminSettingsPage() {
       setSettings(s);
       setForm({
         datamartApiUrl: s?.datamart?.apiUrl || '',
-        datamartApiKey: s?.datamart?.apiKey || '',
-        paystackSecretKey: s?.paystack?.secretKey || '',
+        datamartApiKey: '', // secrets never prefilled — masked preview shown instead
+        paystackSecretKey: '',
         paystackPublicKey: s?.paystack?.publicKey || '',
-        paystackTransferKey: '', // never prefilled — only shown masked
-        smsApiKey: s?.sms?.apiKey || '',
+        paystackTransferKey: '',
+        smsApiKey: '',
         smsSenderId: s?.sms?.senderId || '',
         withdrawalMinimum: s?.withdrawal?.minimumAmount || '',
         withdrawalFeePercent: s?.withdrawal?.feePercent || '',
@@ -59,20 +59,22 @@ export default function AdminSettingsPage() {
   const handleSave = async () => {
     setSaving(true);
     try {
-      const paystackPayload = {
-        secretKey: form.paystackSecretKey,
-        publicKey: form.paystackPublicKey,
-      };
-      // Only send transferKey when the admin typed a new value. Empty string
-      // means "leave it alone"; the backend treats it that way.
-      if (form.paystackTransferKey && form.paystackTransferKey.trim()) {
-        paystackPayload.transferKey = form.paystackTransferKey.trim();
-      }
+      // Secrets follow "leave blank to keep existing" semantics — only include
+      // them in the payload when the admin actually typed a new value.
+      const paystackPayload = { publicKey: form.paystackPublicKey };
+      if (form.paystackSecretKey.trim()) paystackPayload.secretKey = form.paystackSecretKey.trim();
+      if (form.paystackTransferKey.trim()) paystackPayload.transferKey = form.paystackTransferKey.trim();
+
+      const datamartPayload = { apiUrl: form.datamartApiUrl };
+      if (form.datamartApiKey.trim()) datamartPayload.apiKey = form.datamartApiKey.trim();
+
+      const smsPayload = { senderId: form.smsSenderId };
+      if (form.smsApiKey.trim()) smsPayload.apiKey = form.smsApiKey.trim();
 
       await api.put('/admin/settings', {
-        datamart: { apiUrl: form.datamartApiUrl, apiKey: form.datamartApiKey },
+        datamart: datamartPayload,
         paystack: paystackPayload,
-        sms: { apiKey: form.smsApiKey, senderId: form.smsSenderId },
+        sms: smsPayload,
         withdrawal: {
           minimumAmount: parseFloat(form.withdrawalMinimum) || 10,
           feePercent: parseFloat(form.withdrawalFeePercent) || 0,
@@ -83,7 +85,13 @@ export default function AdminSettingsPage() {
         },
       });
       toast.success('Settings saved!');
-      setForm(prev => ({ ...prev, paystackTransferKey: '' }));
+      setForm(prev => ({
+        ...prev,
+        paystackSecretKey: '',
+        paystackTransferKey: '',
+        datamartApiKey: '',
+        smsApiKey: '',
+      }));
       fetchSettings();
     } catch (err) {
       toast.error(err.response?.data?.message || 'Failed to save');
@@ -191,11 +199,22 @@ export default function AdminSettingsPage() {
             value={form.datamartApiUrl}
             onChange={(e) => setForm(prev => ({ ...prev, datamartApiUrl: e.target.value }))}
           />
+          {settings?.datamart?.apiKeyConfigured && (
+            <div className="flex items-center justify-between bg-surface-light rounded-lg px-3 py-2">
+              <div>
+                <p className="text-[10px] text-text-muted uppercase tracking-wider">Current key</p>
+                <p className="text-sm font-mono text-white">{settings.datamart.apiKeyMasked || '••••••••'}</p>
+              </div>
+              <span className="flex items-center gap-1 text-xs font-semibold text-success">
+                <CheckCircle className="w-4 h-4" /> Configured
+              </span>
+            </div>
+          )}
           <Input
-            label="API Key"
+            label={settings?.datamart?.apiKeyConfigured ? 'Replace API key' : 'API key'}
             icon={Key}
             type="password"
-            placeholder="Enter your DataMart API key"
+            placeholder={settings?.datamart?.apiKeyConfigured ? 'Leave blank to keep existing' : 'Enter your DataMart API key'}
             value={form.datamartApiKey}
             onChange={(e) => setForm(prev => ({ ...prev, datamartApiKey: e.target.value }))}
           />
@@ -207,21 +226,40 @@ export default function AdminSettingsPage() {
 
       {/* Paystack */}
       <Card>
-        <div className="flex items-center gap-3 mb-4">
-          <div className="w-10 h-10 bg-blue-500/10 rounded-xl flex items-center justify-center">
-            <CreditCard className="w-5 h-5 text-blue-500" />
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 bg-blue-500/10 rounded-xl flex items-center justify-center">
+              <CreditCard className="w-5 h-5 text-blue-500" />
+            </div>
+            <div>
+              <h2 className="font-bold text-white">Paystack</h2>
+              <p className="text-xs text-text-muted">Payment gateway for MoMo and card payments</p>
+            </div>
           </div>
-          <div>
-            <h2 className="font-bold text-white">Paystack</h2>
-            <p className="text-xs text-text-muted">Payment gateway for MoMo and card payments</p>
-          </div>
+          {settings?.paystack?.secretKeyConfigured ? (
+            <span className="flex items-center gap-1 text-xs font-semibold text-success">
+              <CheckCircle className="w-4 h-4" /> Configured
+            </span>
+          ) : (
+            <span className="flex items-center gap-1 text-xs font-semibold text-text-muted">
+              <XCircle className="w-4 h-4" /> Not set
+            </span>
+          )}
         </div>
         <div className="space-y-4">
+          {settings?.paystack?.secretKeyConfigured && (
+            <div className="flex items-center justify-between bg-surface-light rounded-lg px-3 py-2">
+              <div>
+                <p className="text-[10px] text-text-muted uppercase tracking-wider">Current secret key</p>
+                <p className="text-sm font-mono text-white">{settings.paystack.secretKeyMasked || '••••••••'}</p>
+              </div>
+            </div>
+          )}
           <Input
-            label="Secret Key"
+            label={settings?.paystack?.secretKeyConfigured ? 'Replace secret key' : 'Secret Key'}
             icon={Key}
             type="password"
-            placeholder="sk_live_..."
+            placeholder={settings?.paystack?.secretKeyConfigured ? 'Leave blank to keep existing' : 'sk_live_...'}
             value={form.paystackSecretKey}
             onChange={(e) => setForm(prev => ({ ...prev, paystackSecretKey: e.target.value }))}
           />
@@ -304,11 +342,22 @@ export default function AdminSettingsPage() {
           </div>
         </div>
         <div className="space-y-4">
+          {settings?.sms?.apiKeyConfigured && (
+            <div className="flex items-center justify-between bg-surface-light rounded-lg px-3 py-2">
+              <div>
+                <p className="text-[10px] text-text-muted uppercase tracking-wider">Current API key</p>
+                <p className="text-sm font-mono text-white">{settings.sms.apiKeyMasked || '••••••••'}</p>
+              </div>
+              <span className="flex items-center gap-1 text-xs font-semibold text-success">
+                <CheckCircle className="w-4 h-4" /> Configured
+              </span>
+            </div>
+          )}
           <Input
-            label="API Key"
+            label={settings?.sms?.apiKeyConfigured ? 'Replace API key' : 'API key'}
             icon={Key}
             type="password"
-            placeholder="mNotify API key"
+            placeholder={settings?.sms?.apiKeyConfigured ? 'Leave blank to keep existing' : 'mNotify API key'}
             value={form.smsApiKey}
             onChange={(e) => setForm(prev => ({ ...prev, smsApiKey: e.target.value }))}
           />
