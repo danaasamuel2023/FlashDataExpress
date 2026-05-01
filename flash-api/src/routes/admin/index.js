@@ -11,6 +11,7 @@ const Settings = require('../../models/Settings');
 const datamartService = require('../../services/datamartService');
 const paystackService = require('../../services/paystackService');
 const { encrypt, mask, isConfigured } = require('../../utils/encryption');
+const { generateReference } = require('../../utils/helpers');
 // All purchases go through DataMart
 
 // All admin routes require auth + admin
@@ -380,6 +381,131 @@ router.get('/transactions', async (req, res) => {
     res.json({ status: 'success', data: transactions });
   } catch (err) {
     console.error('Admin error:', err.message);
+    res.status(500).json({ status: 'error', message: 'Something went wrong. Please try again.' });
+  }
+});
+
+// GET /api/admin/refunds - List refunded orders, filterable by date range / search.
+// Query: ?from=YYYY-MM-DD&to=YYYY-MM-DD&search=phone|reference&source=portal|store
+router.get('/refunds', async (req, res) => {
+  try {
+    const { from, to, search, source } = req.query;
+    const filter = { status: 'refunded' };
+
+    // Filter by refundedAt when given. Fall back to createdAt for older records
+    // that may not have refundedAt set.
+    if (from || to) {
+      const range = {};
+      if (from) range.$gte = new Date(from);
+      if (to) {
+        const end = new Date(to);
+        end.setHours(23, 59, 59, 999);
+        range.$lte = end;
+      }
+      filter.$or = [{ refundedAt: range }, { refundedAt: { $exists: false }, createdAt: range }];
+    }
+
+    const src = String(source || '').toLowerCase();
+    if (src === 'portal') filter.purchaseSource = { $in: PORTAL_SOURCES };
+    else if (src === 'store') filter.purchaseSource = { $in: STORE_SOURCES };
+
+    if (search && search.trim()) {
+      const s = search.trim();
+      const searchOr = [
+        { phoneNumber: { $regex: s, $options: 'i' } },
+        { reference: { $regex: s, $options: 'i' } },
+        { datamartReference: { $regex: s, $options: 'i' } },
+      ];
+      // Combine with any date $or by AND-ing them via $and
+      if (filter.$or) {
+        filter.$and = [{ $or: filter.$or }, { $or: searchOr }];
+        delete filter.$or;
+      } else {
+        filter.$or = searchOr;
+      }
+    }
+
+    const refunds = await DataPurchase.find(filter)
+      .populate('userId', 'name email phone')
+      .sort({ refundedAt: -1, createdAt: -1 })
+      .limit(500)
+      .lean();
+
+    const totalAmount = refunds.reduce((s, r) => s + (r.price || 0), 0);
+
+    res.json({
+      status: 'success',
+      data: { refunds, count: refunds.length, totalAmount },
+    });
+  } catch (err) {
+    console.error('Admin refunds error:', err.message);
+    res.status(500).json({ status: 'error', message: 'Something went wrong. Please try again.' });
+  }
+});
+
+// POST /api/admin/refunds/:id/reverse - Reverse a refund the system issued by
+// mistake (e.g., the order actually delivered). Debits the user's wallet by the
+// refund amount — wallet may go negative; admin has authorized this.
+router.post('/refunds/:id/reverse', async (req, res) => {
+  try {
+    const purchase = await DataPurchase.findById(req.params.id);
+    if (!purchase) {
+      return res.status(404).json({ status: 'error', message: 'Order not found' });
+    }
+    if (purchase.status !== 'refunded') {
+      return res.status(400).json({
+        status: 'error',
+        message: `Cannot reverse — order status is "${purchase.status}".`,
+      });
+    }
+
+    const amount = purchase.price || 0;
+    let user = null;
+
+    if (purchase.userId && amount > 0) {
+      // Allow wallet to go negative — admin acknowledges this.
+      user = await User.findOneAndUpdate(
+        { _id: purchase.userId },
+        { $inc: { walletBalance: -amount } },
+        { new: true }
+      );
+      if (user) {
+        await Transaction.create({
+          userId: purchase.userId,
+          type: 'purchase',
+          amount,
+          balanceBefore: user.walletBalance + amount,
+          balanceAfter: user.walletBalance,
+          status: 'completed',
+          reference: generateReference('REV'),
+          gateway: 'system',
+          description: `Refund reversed by admin — ${purchase.capacity}GB ${purchase.network} to ${purchase.phoneNumber} (delivered)`,
+          metadata: {
+            source: 'refund_reversal',
+            originalPurchaseId: purchase._id,
+            originalReference: purchase.reference,
+            reversedBy: req.user._id,
+            previousFailureReason: purchase.failureReason || null,
+          },
+        });
+      }
+    }
+
+    purchase.status = 'completed';
+    purchase.refundedAt = undefined;
+    purchase.failureReason = undefined;
+    await purchase.save();
+
+    res.json({
+      status: 'success',
+      message: 'Refund reversed',
+      data: {
+        purchase,
+        userWalletBalance: user?.walletBalance ?? null,
+      },
+    });
+  } catch (err) {
+    console.error('Admin reverse refund error:', err.message);
     res.status(500).json({ status: 'error', message: 'Something went wrong. Please try again.' });
   }
 });
