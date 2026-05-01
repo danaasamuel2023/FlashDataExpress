@@ -12,6 +12,7 @@ const datamartService = require('../../services/datamartService');
 const paystackService = require('../../services/paystackService');
 const { encrypt, mask, isConfigured } = require('../../utils/encryption');
 const { generateReference } = require('../../utils/helpers');
+const { refundFailedPurchase } = require('../../utils/refund');
 // All purchases go through DataMart
 
 // All admin routes require auth + admin
@@ -443,6 +444,78 @@ router.get('/refunds', async (req, res) => {
   }
 });
 
+// GET /api/admin/orders/awaiting-refund - Failed orders that have not been refunded.
+// Same filters as /admin/refunds. Use POST /admin/orders/:id/refund to refund.
+router.get('/orders/awaiting-refund', async (req, res) => {
+  try {
+    const { from, to, search, source } = req.query;
+    const filter = { status: 'failed' };
+
+    if (from || to) {
+      const range = {};
+      if (from) range.$gte = new Date(from);
+      if (to) {
+        const end = new Date(to);
+        end.setHours(23, 59, 59, 999);
+        range.$lte = end;
+      }
+      filter.createdAt = range;
+    }
+
+    const src = String(source || '').toLowerCase();
+    if (src === 'portal') filter.purchaseSource = { $in: PORTAL_SOURCES };
+    else if (src === 'store') filter.purchaseSource = { $in: STORE_SOURCES };
+
+    if (search && search.trim()) {
+      const s = search.trim();
+      filter.$or = [
+        { phoneNumber: { $regex: s, $options: 'i' } },
+        { reference: { $regex: s, $options: 'i' } },
+        { datamartReference: { $regex: s, $options: 'i' } },
+      ];
+    }
+
+    const orders = await DataPurchase.find(filter)
+      .populate('userId', 'name email phone')
+      .sort({ createdAt: -1 })
+      .limit(500)
+      .lean();
+
+    const totalAmount = orders.reduce((s, r) => s + (r.price || 0), 0);
+
+    res.json({
+      status: 'success',
+      data: { orders, count: orders.length, totalAmount },
+    });
+  } catch (err) {
+    console.error('Admin awaiting-refund error:', err.message);
+    res.status(500).json({ status: 'error', message: 'Something went wrong. Please try again.' });
+  }
+});
+
+// POST /api/admin/orders/:id/refund - Manually refund any non-refunded order.
+// Credits the buyer's wallet with the selling price; agent profit is left intact.
+router.post('/orders/:id/refund', async (req, res) => {
+  try {
+    const purchase = await DataPurchase.findById(req.params.id);
+    if (!purchase) {
+      return res.status(404).json({ status: 'error', message: 'Order not found' });
+    }
+    if (purchase.status === 'refunded') {
+      return res.status(400).json({ status: 'error', message: 'Order is already refunded' });
+    }
+
+    const reason = (req.body?.reason || '').trim()
+      || `Manual refund by admin (${purchase.failureReason || 'no failure reason recorded'})`;
+
+    const result = await refundFailedPurchase(purchase, reason);
+    res.json({ status: 'success', message: 'Refund issued', data: { purchase, refund: result } });
+  } catch (err) {
+    console.error('Admin manual refund error:', err.message);
+    res.status(500).json({ status: 'error', message: 'Something went wrong. Please try again.' });
+  }
+});
+
 // POST /api/admin/refunds/:id/reverse - Reverse a refund the system issued by
 // mistake (e.g., the order actually delivered). Debits the user's wallet by the
 // refund amount — wallet may go negative; admin has authorized this.
@@ -787,18 +860,35 @@ router.post('/pricing/sync', async (req, res) => {
   }
 });
 
+// Sensitive credential fields that must never leave the server in plaintext.
+// Each entry: dot path on the Settings document.
+const SECRET_FIELDS = [
+  'paystack.secretKey',
+  'paystack.transferKey',
+  'datamart.apiKey',
+  'sms.apiKey',
+  'ghust.apiKey',
+  'ghust.webhookSecret',
+];
+
 // GET /api/admin/settings
 router.get('/settings', async (req, res) => {
   try {
     const settings = await Settings.getSettings();
-    // Clone and strip sensitive secrets before returning
     const safe = settings.toObject();
-    const encryptedTransferKey = safe?.paystack?.transferKey || '';
-    if (safe.paystack) {
-      safe.paystack.transferKey = undefined;
-      safe.paystack.transferKeyMasked = mask(encryptedTransferKey);
-      safe.paystack.transferKeyConfigured = isConfigured(encryptedTransferKey);
+
+    // Replace every secret with a masked preview + configured flag. Plaintext
+    // values are masked too (mask/isConfigured handle non-encrypted input).
+    for (const path of SECRET_FIELDS) {
+      const [group, key] = path.split('.');
+      const stored = safe?.[group]?.[key] || '';
+      if (safe[group]) {
+        safe[group][key] = undefined;
+        safe[group][`${key}Masked`] = mask(stored);
+        safe[group][`${key}Configured`] = isConfigured(stored);
+      }
     }
+
     res.json({ status: 'success', data: safe });
   } catch (err) {
     console.error('Admin error:', err.message);
@@ -806,30 +896,54 @@ router.get('/settings', async (req, res) => {
   }
 });
 
+// Apply a "leave alone if blank, clear if null, replace if non-empty string"
+// update for a credential field. Returns nothing — mutates `updates` in place.
+function applySecretUpdate(updates, group, key, value, { encryptOnSave = false } = {}) {
+  if (value === null) {
+    updates[`${group}.${key}`] = '';
+    return;
+  }
+  if (typeof value === 'string' && value.trim()) {
+    updates[`${group}.${key}`] = encryptOnSave ? encrypt(value.trim()) : value.trim();
+  }
+  // undefined / empty string → no-op (preserve existing value)
+}
+
 // PUT /api/admin/settings
 router.put('/settings', async (req, res) => {
   try {
-    const { datamart, paystack, sms, withdrawal, agentSupport, ordersPaused, ordersPausedMessage } = req.body;
+    const { datamart, paystack, sms, ghust, withdrawal, agentSupport, ordersPaused, ordersPausedMessage } = req.body;
     const updates = {};
-    if (datamart) updates.datamart = datamart;
-    if (sms) updates.sms = sms;
     if (withdrawal) updates.withdrawal = withdrawal;
     if (agentSupport) updates.agentSupport = agentSupport;
     if (ordersPaused !== undefined) updates.ordersPaused = !!ordersPaused;
     if (ordersPausedMessage !== undefined) updates.ordersPausedMessage = String(ordersPausedMessage);
 
+    if (datamart) {
+      const { apiKey, ...rest } = datamart;
+      for (const [k, v] of Object.entries(rest)) updates[`datamart.${k}`] = v;
+      applySecretUpdate(updates, 'datamart', 'apiKey', apiKey);
+    }
+
+    if (sms) {
+      const { apiKey, ...rest } = sms;
+      for (const [k, v] of Object.entries(rest)) updates[`sms.${k}`] = v;
+      applySecretUpdate(updates, 'sms', 'apiKey', apiKey);
+    }
+
+    if (ghust) {
+      const { apiKey, webhookSecret, ...rest } = ghust;
+      for (const [k, v] of Object.entries(rest)) updates[`ghust.${k}`] = v;
+      applySecretUpdate(updates, 'ghust', 'apiKey', apiKey);
+      applySecretUpdate(updates, 'ghust', 'webhookSecret', webhookSecret);
+    }
+
     if (paystack) {
-      // Handle the transfer key specially so we never persist plaintext.
-      // Empty string → leave existing key untouched. Explicit null → clear it.
-      const { transferKey, ...rest } = paystack;
-      for (const [k, v] of Object.entries(rest)) {
-        updates[`paystack.${k}`] = v;
-      }
-      if (transferKey === null) {
-        updates['paystack.transferKey'] = '';
-      } else if (typeof transferKey === 'string' && transferKey.trim()) {
-        updates['paystack.transferKey'] = encrypt(transferKey.trim());
-      }
+      const { secretKey, transferKey, ...rest } = paystack;
+      for (const [k, v] of Object.entries(rest)) updates[`paystack.${k}`] = v;
+      applySecretUpdate(updates, 'paystack', 'secretKey', secretKey);
+      // Transfer key is the one that gets encrypted at rest.
+      applySecretUpdate(updates, 'paystack', 'transferKey', transferKey, { encryptOnSave: true });
     }
 
     await Settings.findOneAndUpdate(

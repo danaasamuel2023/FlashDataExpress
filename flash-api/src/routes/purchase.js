@@ -10,7 +10,6 @@ const datamartService = require('../services/datamartService');
 const paystackService = require('../services/paystackService');
 const referralService = require('../services/referralService');
 const { generateReference, formatPhone, validateGhanaPhone } = require('../utils/helpers');
-const { refundFailedPurchase } = require('../utils/refund');
 
 const VALID_NETWORKS = ['YELLO', 'TELECEL', 'AT_PREMIUM'];
 
@@ -235,12 +234,11 @@ router.post('/buy', auth, ordersPaused, async (req, res) => {
       purchase.status = 'failed';
       purchase.failureReason = providerMessage;
       await purchase.save();
-      try {
-        await refundFailedPurchase(purchase, providerMessage);
-      } catch (refundErr) {
-        console.error('Direct /buy refund failed:', refundErr.message, 'ref:', purchase.reference);
-      }
-      return res.status(500).json({ status: 'error', message: `Purchase failed: ${providerMessage}. Your balance has been refunded.` });
+      // Auto-refund disabled — admin will refund manually from /admin/refunds.
+      return res.status(500).json({
+        status: 'error',
+        message: `Purchase failed: ${providerMessage}. Please contact support — admin will review and refund.`,
+      });
     }
 
     // Process referral commission

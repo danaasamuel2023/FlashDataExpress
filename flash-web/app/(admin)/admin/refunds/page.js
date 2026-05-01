@@ -1,6 +1,6 @@
 'use client';
 import { useState, useEffect } from 'react';
-import { Loader2, RefreshCw, Search, Calendar, Undo2, AlertTriangle, Globe, Store as StoreIcon } from 'lucide-react';
+import { Loader2, RefreshCw, Search, Calendar, Undo2, AlertTriangle, Globe, Store as StoreIcon, RotateCcw } from 'lucide-react';
 import toast from 'react-hot-toast';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
@@ -20,11 +20,12 @@ function daysAgoStr(n) {
 }
 
 export default function AdminRefundsPage() {
-  const [refunds, setRefunds] = useState([]);
+  const [tab, setTab] = useState('refunded'); // 'refunded' | 'awaiting'
+  const [rows, setRows] = useState([]);
   const [count, setCount] = useState(0);
   const [totalAmount, setTotalAmount] = useState(0);
   const [loading, setLoading] = useState(true);
-  const [reversing, setReversing] = useState(null);
+  const [actingId, setActingId] = useState(null);
 
   const [from, setFrom] = useState(daysAgoStr(7));
   const [to, setTo] = useState(todayStr());
@@ -32,11 +33,11 @@ export default function AdminRefundsPage() {
   const [source, setSource] = useState('all'); // 'all' | 'portal' | 'store'
 
   useEffect(() => {
-    fetchRefunds();
+    fetchRows();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [tab]);
 
-  const fetchRefunds = async (e) => {
+  const fetchRows = async (e) => {
     if (e?.preventDefault) e.preventDefault();
     setLoading(true);
     try {
@@ -45,12 +46,19 @@ export default function AdminRefundsPage() {
       if (to) params.set('to', to);
       if (search.trim()) params.set('search', search.trim());
       if (source !== 'all') params.set('source', source);
-      const res = await api.get(`/admin/refunds?${params.toString()}`);
-      setRefunds(res.data.data.refunds || []);
+
+      const url = tab === 'refunded'
+        ? `/admin/refunds?${params.toString()}`
+        : `/admin/orders/awaiting-refund?${params.toString()}`;
+      const res = await api.get(url);
+      const list = tab === 'refunded'
+        ? (res.data.data.refunds || [])
+        : (res.data.data.orders || []);
+      setRows(list);
       setCount(res.data.data.count || 0);
       setTotalAmount(res.data.data.totalAmount || 0);
     } catch (err) {
-      toast.error(err.response?.data?.message || 'Failed to load refunds');
+      toast.error(err.response?.data?.message || 'Failed to load');
     } finally {
       setLoading(false);
     }
@@ -65,7 +73,7 @@ export default function AdminRefundsPage() {
       `The user's wallet will be debited by this amount. It may go negative — that's OK.`;
     if (!confirm(msg)) return;
 
-    setReversing(purchase._id);
+    setActingId(purchase._id);
     try {
       const res = await api.post(`/admin/refunds/${purchase._id}/reverse`);
       const newBalance = res.data.data?.userWalletBalance;
@@ -73,29 +81,73 @@ export default function AdminRefundsPage() {
         ? ` New wallet balance: ${formatCurrency(newBalance)}.`
         : '';
       toast.success(`Refund reversed.${balanceMsg}`);
-      // Drop the row from the list
-      setRefunds(prev => prev.filter(r => r._id !== purchase._id));
+      setRows(prev => prev.filter(r => r._id !== purchase._id));
       setCount(prev => Math.max(0, prev - 1));
       setTotalAmount(prev => Math.max(0, prev - (purchase.price || 0)));
     } catch (err) {
       toast.error(err.response?.data?.message || 'Failed to reverse refund');
     } finally {
-      setReversing(null);
+      setActingId(null);
     }
   };
+
+  const issueRefund = async (purchase) => {
+    const userName = purchase.userId?.name || purchase.userId?.email || 'this user';
+    const msg =
+      `Refund ${userName}?\n\n` +
+      `Order: ${purchase.capacity}GB ${NETWORK_LABELS[purchase.network] || purchase.network} → ${purchase.phoneNumber}\n` +
+      `Amount to credit: ${formatCurrency(purchase.price)}\n\n` +
+      `Make sure this order really wasn't delivered.`;
+    if (!confirm(msg)) return;
+
+    setActingId(purchase._id);
+    try {
+      await api.post(`/admin/orders/${purchase._id}/refund`);
+      toast.success(`Refund issued: ${formatCurrency(purchase.price)}`);
+      setRows(prev => prev.filter(r => r._id !== purchase._id));
+      setCount(prev => Math.max(0, prev - 1));
+      setTotalAmount(prev => Math.max(0, prev - (purchase.price || 0)));
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Failed to refund');
+    } finally {
+      setActingId(null);
+    }
+  };
+
+  const isRefundedTab = tab === 'refunded';
 
   return (
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-extrabold text-white tracking-tight">Refunds</h1>
         <p className="text-text-muted text-sm mt-1">
-          Reverse a refund if the order was actually delivered. The user&apos;s wallet will be debited (negative balance is allowed).
+          Auto-refunds are off. Issue refunds for failed orders and reverse refunds that were given by mistake.
         </p>
+      </div>
+
+      {/* Tabs */}
+      <div className="flex bg-surface-light rounded-lg p-1 w-fit">
+        <button
+          onClick={() => setTab('refunded')}
+          className={`flex items-center gap-1.5 px-4 py-2 rounded-md text-xs font-bold transition-colors ${
+            isRefundedTab ? 'bg-primary text-white' : 'text-text-muted hover:text-white'
+          }`}
+        >
+          <RotateCcw className="w-3.5 h-3.5" /> Refunded
+        </button>
+        <button
+          onClick={() => setTab('awaiting')}
+          className={`flex items-center gap-1.5 px-4 py-2 rounded-md text-xs font-bold transition-colors ${
+            !isRefundedTab ? 'bg-primary text-white' : 'text-text-muted hover:text-white'
+          }`}
+        >
+          <AlertTriangle className="w-3.5 h-3.5" /> Awaiting refund
+        </button>
       </div>
 
       {/* Filter form */}
       <Card>
-        <form onSubmit={fetchRefunds} className="space-y-4">
+        <form onSubmit={fetchRows} className="space-y-4">
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
             <div className="lg:col-span-1">
               <label className="block text-[10px] font-bold text-text-muted uppercase tracking-wider mb-1.5">From</label>
@@ -202,37 +254,53 @@ export default function AdminRefundsPage() {
       {/* Summary */}
       <div className="grid grid-cols-2 gap-4">
         <Card>
-          <p className="text-xs text-text-muted">Refunds in range</p>
+          <p className="text-xs text-text-muted">{isRefundedTab ? 'Refunds in range' : 'Failed orders awaiting refund'}</p>
           <p className="text-2xl font-extrabold text-white">{count}</p>
         </Card>
         <Card>
-          <p className="text-xs text-text-muted">Total refunded</p>
+          <p className="text-xs text-text-muted">{isRefundedTab ? 'Total refunded' : 'Total at-risk amount'}</p>
           <p className="text-2xl font-extrabold text-white">{formatCurrency(totalAmount)}</p>
         </Card>
       </div>
 
-      {/* Warning */}
-      <Card className="!border-accent/30 bg-accent/5">
-        <div className="flex items-start gap-3">
-          <AlertTriangle className="w-5 h-5 text-accent flex-shrink-0 mt-0.5" />
-          <div>
-            <p className="font-bold text-white text-sm">Reversing a refund debits the user&apos;s wallet</p>
-            <p className="text-text-muted text-xs mt-1">
-              Use this only when the order was actually delivered but auto-refunded by mistake.
-              The user&apos;s wallet is allowed to go negative — they&apos;ll need to top up before their next purchase.
-            </p>
+      {/* Tab-specific notice */}
+      {isRefundedTab ? (
+        <Card className="!border-accent/30 bg-accent/5">
+          <div className="flex items-start gap-3">
+            <AlertTriangle className="w-5 h-5 text-accent flex-shrink-0 mt-0.5" />
+            <div>
+              <p className="font-bold text-white text-sm">Reversing a refund debits the user&apos;s wallet</p>
+              <p className="text-text-muted text-xs mt-1">
+                Use this only when the order was actually delivered but had been refunded.
+                The user&apos;s wallet is allowed to go negative — they&apos;ll need to top up before their next purchase.
+              </p>
+            </div>
           </div>
-        </div>
-      </Card>
+        </Card>
+      ) : (
+        <Card className="!border-primary/30 bg-primary/5">
+          <div className="flex items-start gap-3">
+            <AlertTriangle className="w-5 h-5 text-primary flex-shrink-0 mt-0.5" />
+            <div>
+              <p className="font-bold text-white text-sm">Auto-refunds are disabled</p>
+              <p className="text-text-muted text-xs mt-1">
+                Failed orders stay failed until you refund them here. Verify the order really wasn&apos;t delivered before issuing a refund.
+              </p>
+            </div>
+          </div>
+        </Card>
+      )}
 
-      {/* Refunds table */}
+      {/* Rows table */}
       <Card>
-        {loading && !refunds.length ? (
+        {loading && !rows.length ? (
           <div className="flex justify-center py-16">
             <Loader2 className="w-6 h-6 text-primary animate-spin" />
           </div>
-        ) : !refunds.length ? (
-          <p className="text-text-muted text-sm text-center py-12">No refunds match your filters.</p>
+        ) : !rows.length ? (
+          <p className="text-text-muted text-sm text-center py-12">
+            {isRefundedTab ? 'No refunds match your filters.' : 'No failed orders awaiting refund.'}
+          </p>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
@@ -240,13 +308,13 @@ export default function AdminRefundsPage() {
                 <tr className="border-b border-white/[0.04]">
                   <th className="text-left py-2 text-text-muted font-semibold text-xs">User</th>
                   <th className="text-left py-2 text-text-muted font-semibold text-xs">Order</th>
-                  <th className="text-left py-2 text-text-muted font-semibold text-xs">Refunded</th>
+                  <th className="text-left py-2 text-text-muted font-semibold text-xs">{isRefundedTab ? 'Refunded' : 'Failed'}</th>
                   <th className="text-right py-2 text-text-muted font-semibold text-xs">Amount</th>
                   <th className="text-right py-2 text-text-muted font-semibold text-xs">Action</th>
                 </tr>
               </thead>
               <tbody>
-                {refunds.map((r) => (
+                {rows.map((r) => (
                   <tr key={r._id} className="border-b border-white/[0.04] hover:bg-white/[0.02]">
                     <td className="py-3">
                       <p className="text-white text-xs font-semibold">
@@ -271,25 +339,44 @@ export default function AdminRefundsPage() {
                       )}
                     </td>
                     <td className="py-3">
-                      <p className="text-white text-xs">{formatDate(r.refundedAt || r.createdAt)}</p>
-                      <p className="text-text-muted text-[10px]">Placed {formatDate(r.createdAt)}</p>
+                      <p className="text-white text-xs">
+                        {formatDate(isRefundedTab ? (r.refundedAt || r.createdAt) : r.createdAt)}
+                      </p>
+                      {isRefundedTab && (
+                        <p className="text-text-muted text-[10px]">Placed {formatDate(r.createdAt)}</p>
+                      )}
                     </td>
                     <td className="py-3 text-right">
                       <p className="font-bold text-white">{formatCurrency(r.price)}</p>
                     </td>
                     <td className="py-3 text-right">
-                      <button
-                        onClick={() => reverseRefund(r)}
-                        disabled={reversing === r._id}
-                        className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-error/10 hover:bg-error/20 text-error rounded-lg text-xs font-bold transition-colors disabled:opacity-50"
-                      >
-                        {reversing === r._id ? (
-                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                        ) : (
-                          <Undo2 className="w-3.5 h-3.5" />
-                        )}
-                        Reverse
-                      </button>
+                      {isRefundedTab ? (
+                        <button
+                          onClick={() => reverseRefund(r)}
+                          disabled={actingId === r._id}
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-error/10 hover:bg-error/20 text-error rounded-lg text-xs font-bold transition-colors disabled:opacity-50"
+                        >
+                          {actingId === r._id ? (
+                            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                          ) : (
+                            <Undo2 className="w-3.5 h-3.5" />
+                          )}
+                          Reverse
+                        </button>
+                      ) : (
+                        <button
+                          onClick={() => issueRefund(r)}
+                          disabled={actingId === r._id}
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-success/10 hover:bg-success/20 text-success rounded-lg text-xs font-bold transition-colors disabled:opacity-50"
+                        >
+                          {actingId === r._id ? (
+                            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                          ) : (
+                            <RotateCcw className="w-3.5 h-3.5" />
+                          )}
+                          Refund
+                        </button>
+                      )}
                     </td>
                   </tr>
                 ))}
