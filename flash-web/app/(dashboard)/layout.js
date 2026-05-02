@@ -4,7 +4,8 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import {
   Home, ShoppingBag, Clock, Wallet, Gift, UserCircle, Store,
-  Menu, X, ChevronRight, LogOut, Zap, Package, MessageCircle
+  Menu, X, ChevronRight, LogOut, Zap, Package, MessageCircle,
+  TrendingUp, DollarSign, Sparkles
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { formatCurrency } from '@/lib/constants';
@@ -29,6 +30,8 @@ export default function DashboardLayout({ children }) {
   const [isMobile, setIsMobile] = useState(false);
   const [supportWhatsapp, setSupportWhatsapp] = useState('');
   const [whatsappPopup, setWhatsappPopup] = useState(false);
+  const [hasStore, setHasStore] = useState(null); // null=unknown, true/false once checked
+  const [showStoreModal, setShowStoreModal] = useState(false);
 
   // Force dark mode for dashboard
   useEffect(() => {
@@ -63,6 +66,49 @@ export default function DashboardLayout({ children }) {
       if (isSubAgent) router.replace('/subagent/dashboard');
     }
   }, [user, loading, router]);
+
+  // Check whether user already has a store (so we don't nag store owners)
+  useEffect(() => {
+    if (loading || !user) return;
+    if (typeof window === 'undefined') return;
+    if (localStorage.getItem('ds_is_subagent') === 'true') return;
+    api.get('/store/my-store')
+      .then(() => setHasStore(true))
+      .catch(err => {
+        if (err.response?.status === 404) setHasStore(false);
+      });
+  }, [loading, user]);
+
+  // Show "Create Your Store" modal hourly until the user opens a store
+  useEffect(() => {
+    if (hasStore !== false) return;
+    if (typeof window === 'undefined') return;
+
+    const ONE_HOUR = 60 * 60 * 1000;
+    const onStorePage = pathname.startsWith('/store');
+
+    const check = () => {
+      if (pathname.startsWith('/store')) return;
+      const last = parseInt(localStorage.getItem('ds_store_modal_last_shown') || '0', 10);
+      if (Date.now() - last >= ONE_HOUR) setShowStoreModal(true);
+    };
+
+    if (!onStorePage) check();
+    const id = setInterval(check, 60 * 1000);
+    return () => clearInterval(id);
+  }, [hasStore, pathname]);
+
+  const dismissStoreModal = () => {
+    setShowStoreModal(false);
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('ds_store_modal_last_shown', String(Date.now()));
+    }
+  };
+
+  const goToStoreSetup = () => {
+    dismissStoreModal();
+    router.push('/store/setup');
+  };
 
   if (loading || !user) {
     return (
@@ -262,6 +308,89 @@ export default function DashboardLayout({ children }) {
 
       {/* Click outside to close popup */}
       {whatsappPopup && <div className="fixed inset-0 z-35" onClick={() => setWhatsappPopup(false)} />}
+
+      {/* Hourly "Create Your Store" modal */}
+      {showStoreModal && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
+          <div
+            className="absolute inset-0 bg-black/70 backdrop-blur-sm"
+            onClick={dismissStoreModal}
+          />
+          <div className="relative w-full max-w-md bg-surface border border-white/10 rounded-3xl shadow-2xl overflow-hidden">
+            <button
+              onClick={dismissStoreModal}
+              className="absolute top-3 right-3 p-1.5 rounded-lg text-text-muted hover:text-white hover:bg-white/5 z-10"
+              aria-label="Close"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            <div className="bg-gradient-to-br from-primary/30 via-primary/10 to-transparent p-6 pb-4">
+              <div className="w-14 h-14 bg-primary rounded-2xl flex items-center justify-center shadow-lg shadow-primary/30 mb-4">
+                <Store className="w-7 h-7 text-white" />
+              </div>
+              <div className="inline-flex items-center gap-1.5 bg-primary/15 text-primary text-[11px] font-bold px-2.5 py-1 rounded-full mb-3">
+                <Sparkles className="w-3 h-3" /> EARN WITH FLASHDATA
+              </div>
+              <h2 className="text-2xl font-extrabold text-white leading-tight">
+                Open your own data shop &amp; make money
+              </h2>
+              <p className="text-text-muted text-sm mt-2">
+                Sell data with your own brand, set your own prices, and keep the profit on every sale.
+              </p>
+            </div>
+
+            <div className="px-6 pb-2 space-y-2.5">
+              <div className="flex items-start gap-3">
+                <div className="w-8 h-8 rounded-lg bg-emerald-500/15 flex items-center justify-center flex-shrink-0">
+                  <DollarSign className="w-4 h-4 text-emerald-400" />
+                </div>
+                <div>
+                  <p className="text-white text-sm font-semibold">Set your own prices</p>
+                  <p className="text-text-muted text-xs">Mark up bundles and pocket the difference on every order.</p>
+                </div>
+              </div>
+              <div className="flex items-start gap-3">
+                <div className="w-8 h-8 rounded-lg bg-blue-500/15 flex items-center justify-center flex-shrink-0">
+                  <TrendingUp className="w-4 h-4 text-blue-400" />
+                </div>
+                <div>
+                  <p className="text-white text-sm font-semibold">Your branded storefront</p>
+                  <p className="text-text-muted text-xs">Get a shareable shop link customers can buy from directly.</p>
+                </div>
+              </div>
+              <div className="flex items-start gap-3">
+                <div className="w-8 h-8 rounded-lg bg-primary/15 flex items-center justify-center flex-shrink-0">
+                  <Wallet className="w-4 h-4 text-primary" />
+                </div>
+                <div>
+                  <p className="text-white text-sm font-semibold">Withdraw to MoMo</p>
+                  <p className="text-text-muted text-xs">Cash out your earnings straight to mobile money.</p>
+                </div>
+              </div>
+            </div>
+
+            <div className="p-6 pt-4 space-y-2">
+              <div className="text-center mb-1">
+                <span className="text-text-muted text-xs">One-time activation: </span>
+                <span className="text-primary font-extrabold text-sm">GH₵50</span>
+              </div>
+              <button
+                onClick={goToStoreSetup}
+                className="w-full bg-primary hover:bg-primary/90 text-white font-bold py-3 rounded-xl transition-colors flex items-center justify-center gap-2"
+              >
+                <Store className="w-4 h-4" /> Create My Store
+              </button>
+              <button
+                onClick={dismissStoreModal}
+                className="w-full text-text-muted hover:text-white text-sm font-medium py-2 transition-colors"
+              >
+                Remind me later
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Mobile bottom nav */}
       {isMobile && (
