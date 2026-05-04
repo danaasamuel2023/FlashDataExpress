@@ -75,7 +75,12 @@ export default function DashboardLayout({ children }) {
     api.get('/store/my-store')
       .then(() => setHasStore(true))
       .catch(err => {
-        if (err.response?.status === 404) setHasStore(false);
+        // 404 = no store. Treat network/timeout/5xx as "no store" too so a flaky
+        // API doesn't permanently suppress the modal — worst case the user sees
+        // it once and dismisses.
+        if (err.response?.status === 404 || !err.response || err.response.status >= 500) {
+          setHasStore(false);
+        }
       });
   }, [loading, user]);
 
