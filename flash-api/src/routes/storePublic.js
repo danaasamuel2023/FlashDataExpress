@@ -33,8 +33,12 @@ router.get('/:slug/products', async (req, res) => {
       return res.status(404).json({ status: 'error', message: 'Store not found' });
     }
     const products = await StoreProduct.find({ storeId: store._id, isActive: true })
-      .select('network capacity sellingPrice');
-    res.json({ status: 'success', data: products });
+      .select('network capacity sellingPrice')
+      .lean();
+    const settings = await Settings.getSettings();
+    const outOfStock = new Set(settings?.outOfStockNetworks || []);
+    const annotated = products.map(p => ({ ...p, outOfStock: outOfStock.has(p.network) }));
+    res.json({ status: 'success', data: annotated });
   } catch (err) {
     console.error('Store public error:', err.message);
     res.status(500).json({ status: 'error', message: 'Something went wrong. Please try again.' });

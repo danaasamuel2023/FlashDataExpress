@@ -912,12 +912,15 @@ function applySecretUpdate(updates, group, key, value, { encryptOnSave = false }
 // PUT /api/admin/settings
 router.put('/settings', async (req, res) => {
   try {
-    const { datamart, paystack, sms, ghust, withdrawal, agentSupport, ordersPaused, ordersPausedMessage } = req.body;
+    const { datamart, paystack, sms, ghust, withdrawal, agentSupport, ordersPaused, ordersPausedMessage, outOfStockNetworks } = req.body;
     const updates = {};
     if (withdrawal) updates.withdrawal = withdrawal;
     if (agentSupport) updates.agentSupport = agentSupport;
     if (ordersPaused !== undefined) updates.ordersPaused = !!ordersPaused;
     if (ordersPausedMessage !== undefined) updates.ordersPausedMessage = String(ordersPausedMessage);
+    if (Array.isArray(outOfStockNetworks)) {
+      updates.outOfStockNetworks = outOfStockNetworks.map(String);
+    }
 
     if (datamart) {
       const { apiKey, ...rest } = datamart;
@@ -991,6 +994,35 @@ router.post('/orders/pause', async (req, res) => {
     res.json({ status: 'success', data: { ordersPaused: !!paused } });
   } catch (err) {
     console.error('Admin pause error:', err.message);
+    res.status(500).json({ status: 'error', message: 'Something went wrong. Please try again.' });
+  }
+});
+
+const VALID_NETWORKS = ['YELLO', 'TELECEL', 'AT_PREMIUM'];
+
+// POST /api/admin/orders/out-of-stock - Toggle a single network's stock state
+router.post('/orders/out-of-stock', async (req, res) => {
+  try {
+    const { network, outOfStock } = req.body;
+    if (!VALID_NETWORKS.includes(network)) {
+      return res.status(400).json({ status: 'error', message: 'Invalid network' });
+    }
+    const settings = await Settings.getSettings();
+    const current = new Set(settings?.outOfStockNetworks || []);
+    if (outOfStock) {
+      current.add(network);
+    } else {
+      current.delete(network);
+    }
+    const next = Array.from(current);
+    await Settings.findOneAndUpdate(
+      { _id: 'app_settings' },
+      { $set: { outOfStockNetworks: next } },
+      { upsert: true }
+    );
+    res.json({ status: 'success', data: { outOfStockNetworks: next } });
+  } catch (err) {
+    console.error('Admin out-of-stock error:', err.message);
     res.status(500).json({ status: 'error', message: 'Something went wrong. Please try again.' });
   }
 });

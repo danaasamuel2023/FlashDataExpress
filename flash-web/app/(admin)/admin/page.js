@@ -1,6 +1,6 @@
 'use client';
 import { useState, useEffect } from 'react';
-import { Users, ShoppingBag, Wallet, TrendingUp, Loader2, RefreshCw, DollarSign, CalendarDays, Pause, Play, AlertTriangle, Store as StoreIcon, Globe } from 'lucide-react';
+import { Users, ShoppingBag, Wallet, TrendingUp, Loader2, RefreshCw, DollarSign, CalendarDays, Pause, Play, AlertTriangle, Store as StoreIcon, Globe, PackageX, PackageCheck } from 'lucide-react';
 import toast from 'react-hot-toast';
 import Card from '@/components/ui/Card';
 import { formatCurrency, formatDate, NETWORKS } from '@/lib/constants';
@@ -19,6 +19,8 @@ export default function AdminOverviewPage() {
   const [ordersPaused, setOrdersPaused] = useState(false);
   const [pauseMessage, setPauseMessage] = useState('');
   const [togglingPause, setTogglingPause] = useState(false);
+  const [outOfStock, setOutOfStock] = useState([]);
+  const [togglingStock, setTogglingStock] = useState(null);
 
   useEffect(() => {
     fetchStats();
@@ -34,8 +36,26 @@ export default function AdminOverviewPage() {
       const res = await api.get('/admin/settings');
       setOrdersPaused(!!res.data.data?.ordersPaused);
       setPauseMessage(res.data.data?.ordersPausedMessage || '');
+      setOutOfStock(res.data.data?.outOfStockNetworks || []);
     } catch {
       // silently fail
+    }
+  };
+
+  const handleToggleStock = async (network) => {
+    const isOut = outOfStock.includes(network);
+    setTogglingStock(network);
+    try {
+      const res = await api.post('/admin/orders/out-of-stock', {
+        network,
+        outOfStock: !isOut,
+      });
+      setOutOfStock(res.data.data?.outOfStockNetworks || []);
+      toast.success(isOut ? `${NETWORK_LABELS[network]} back in stock` : `${NETWORK_LABELS[network]} marked out of stock`);
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Failed to update');
+    } finally {
+      setTogglingStock(null);
     }
   };
 
@@ -156,6 +176,51 @@ export default function AdminOverviewPage() {
             {togglingPause ? <Loader2 className="w-4 h-4 animate-spin" /> : (ordersPaused ? <Play className="w-4 h-4" /> : <Pause className="w-4 h-4" />)}
             {ordersPaused ? 'Resume orders' : 'Pause orders'}
           </button>
+        </div>
+      </Card>
+
+      {/* Per-network out-of-stock control */}
+      <Card>
+        <div className="flex items-start gap-3 mb-3">
+          <div className="w-10 h-10 rounded-xl bg-accent/10 flex items-center justify-center flex-shrink-0">
+            <PackageX className="w-5 h-5 text-accent" />
+          </div>
+          <div>
+            <p className="font-bold text-white">Network Stock</p>
+            <p className="text-xs text-text-muted mt-0.5">
+              Mark a network out of stock to block orders for that network only. Other networks keep working.
+            </p>
+          </div>
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+          {Object.entries(NETWORK_LABELS).map(([net, label]) => {
+            const isOut = outOfStock.includes(net);
+            const isLoading = togglingStock === net;
+            return (
+              <button
+                key={net}
+                onClick={() => handleToggleStock(net)}
+                disabled={isLoading}
+                className={`flex items-center justify-between gap-2 px-4 py-3 rounded-lg border transition-colors disabled:opacity-50 ${
+                  isOut
+                    ? 'bg-error/10 border-error/30 hover:bg-error/15'
+                    : 'bg-success/5 border-success/20 hover:bg-success/10'
+                }`}
+              >
+                <div className="text-left">
+                  <p className="font-bold text-sm text-white">{label}</p>
+                  <p className={`text-[10px] font-semibold ${isOut ? 'text-error' : 'text-success'}`}>
+                    {isOut ? 'OUT OF STOCK' : 'IN STOCK'}
+                  </p>
+                </div>
+                {isLoading
+                  ? <Loader2 className="w-4 h-4 animate-spin text-text-muted" />
+                  : isOut
+                    ? <PackageCheck className="w-4 h-4 text-success" />
+                    : <PackageX className="w-4 h-4 text-error" />}
+              </button>
+            );
+          })}
         </div>
       </Card>
 

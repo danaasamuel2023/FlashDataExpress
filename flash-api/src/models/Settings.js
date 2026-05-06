@@ -66,6 +66,9 @@ const SettingsSchema = new mongoose.Schema({
   maintenanceMode: { type: Boolean, default: false },
   ordersPaused: { type: Boolean, default: false },
   ordersPausedMessage: { type: String, default: 'Orders are temporarily paused by admin. Please try again shortly.' },
+  // Networks the admin has marked out of stock. Orders for these networks
+  // are rejected on every purchase path; UIs hide or grey out their bundles.
+  outOfStockNetworks: { type: [String], default: [] },
   updatedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
   updatedAt: { type: Date, default: Date.now }
 });

@@ -25,6 +25,7 @@ router.get('/guest-packages', async (req, res) => {
     const { network } = req.query;
     const settings = await Settings.getSettings();
     const sellingPrices = settings?.pricing?.sellingPrices || {};
+    const outOfStock = new Set(settings?.outOfStockNetworks || []);
 
     const result = [];
     const networks = network ? [network] : Object.keys(sellingPrices);
@@ -33,7 +34,12 @@ router.get('/guest-packages', async (req, res) => {
       const networkPrices = sellingPrices[net] || {};
       for (const [capacity, price] of Object.entries(networkPrices)) {
         if (price > 0) {
-          result.push({ network: net, capacity: parseFloat(capacity), price });
+          result.push({
+            network: net,
+            capacity: parseFloat(capacity),
+            price,
+            outOfStock: outOfStock.has(net),
+          });
         }
       }
     }
@@ -124,6 +130,7 @@ router.get('/packages', auth, async (req, res) => {
     const { network } = req.query;
     const settings = await Settings.getSettings();
     const sellingPrices = settings?.pricing?.sellingPrices || {};
+    const outOfStock = new Set(settings?.outOfStockNetworks || []);
 
     // Build packages from admin-set selling prices
     const result = [];
@@ -137,6 +144,7 @@ router.get('/packages', auth, async (req, res) => {
             network: net,
             capacity: parseFloat(capacity),
             price,
+            outOfStock: outOfStock.has(net),
           });
         }
       }

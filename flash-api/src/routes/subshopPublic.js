@@ -56,9 +56,13 @@ router.get('/:slug/products', async (req, res) => {
     }
 
     const products = await SubAgentProduct.find({ subAgentId: subAgent._id, isActive: true })
-      .select('network capacity sellingPrice');
+      .select('network capacity sellingPrice')
+      .lean();
+    const settings = await Settings.getSettings();
+    const outOfStock = new Set(settings?.outOfStockNetworks || []);
+    const annotated = products.map(p => ({ ...p, outOfStock: outOfStock.has(p.network) }));
 
-    res.json({ status: 'success', data: products });
+    res.json({ status: 'success', data: annotated });
   } catch (err) {
     console.error('SubShop products error:', err.message);
     res.status(500).json({ status: 'error', message: 'Something went wrong. Please try again.' });

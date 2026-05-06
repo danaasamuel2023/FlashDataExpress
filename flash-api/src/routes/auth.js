@@ -284,6 +284,7 @@ router.get('/orders-status', async (req, res) => {
       data: {
         ordersPaused: !!settings?.ordersPaused,
         message: settings?.ordersPausedMessage || '',
+        outOfStockNetworks: settings?.outOfStockNetworks || [],
       },
     });
   } catch (err) {

@@ -66,7 +66,13 @@ export default function BuyDataPage() {
     }
   };
 
+  const networkOutOfStock = packages.length > 0 && packages.every(p => p.outOfStock);
+
   const handleSelect = (pkg) => {
+    if (pkg.outOfStock) {
+      toast.error(`${getNetworkName(selectedNetwork)} is out of stock right now.`);
+      return;
+    }
     if (selectedBundle?.capacity === pkg.capacity && selectedBundle?.price === pkg.price) {
       setSelectedBundle(null);
     } else {
@@ -210,6 +216,15 @@ export default function BuyDataPage() {
           {getNetworkName(selectedNetwork)} Bundles
         </h2>
 
+        {networkOutOfStock && (
+          <div className="mb-3 bg-error/10 border border-error/20 rounded-xl p-3 flex items-center gap-2">
+            <AlertCircle className="w-4 h-4 text-error shrink-0" />
+            <p className="text-sm text-error font-semibold">
+              {getNetworkName(selectedNetwork)} is currently out of stock. Please pick another network.
+            </p>
+          </div>
+        )}
+
         {loadingPackages ? (
           <div className="flex items-center justify-center py-12">
             <Loader2 className={`w-8 h-8 animate-spin ${
@@ -233,16 +248,27 @@ export default function BuyDataPage() {
                   {/* Bundle Card */}
                   <div
                     onClick={() => handleSelect(pkg)}
-                    className={`${style.card} overflow-hidden cursor-pointer transition-all hover:shadow-lg rounded-2xl hover:-translate-y-1 ${
-                      isSelected ? `ring-2 ${style.ring} shadow-xl -translate-y-1` : ''
+                    className={`${style.card} relative overflow-hidden transition-all rounded-2xl ${
+                      pkg.outOfStock
+                        ? 'cursor-not-allowed opacity-50 grayscale'
+                        : `cursor-pointer hover:shadow-lg hover:-translate-y-1 ${
+                            isSelected ? `ring-2 ${style.ring} shadow-xl -translate-y-1` : ''
+                          }`
                     }`}
                   >
+                    {pkg.outOfStock && (
+                      <span className="absolute top-2 right-2 bg-black/70 text-white text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider">
+                        Out of stock
+                      </span>
+                    )}
                     <div className="p-4">
                       <div className="flex items-start justify-between mb-2">
                         <NetworkIcon network={selectedNetwork} size={32} />
-                        <button className={`w-7 h-7 rounded-full flex items-center justify-center ${style.chevronBg} transition`}>
-                          <ChevronDown className={`w-3.5 h-3.5 transition-transform ${isSelected ? 'rotate-180' : ''}`} />
-                        </button>
+                        {!pkg.outOfStock && (
+                          <button className={`w-7 h-7 rounded-full flex items-center justify-center ${style.chevronBg} transition`}>
+                            <ChevronDown className={`w-3.5 h-3.5 transition-transform ${isSelected ? 'rotate-180' : ''}`} />
+                          </button>
+                        )}
                       </div>
                       <h3 className={`text-2xl font-bold ${style.text}`}>{pkg.capacity}GB</h3>
                       <p className={`text-xs ${style.sub} mb-2`}>{getNetworkName(selectedNetwork)} Bundle</p>

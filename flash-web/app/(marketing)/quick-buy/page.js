@@ -387,6 +387,10 @@ function GuestBuyContent() {
   };
 
   const handleSelect = (pkg) => {
+    if (pkg.outOfStock) {
+      toast.error(`${getNetworkName(selectedNetwork)} is out of stock right now.`);
+      return;
+    }
     if (selectedBundle?.capacity === pkg.capacity && selectedBundle?.price === pkg.price) {
       setSelectedBundle(null);
     } else {
@@ -395,6 +399,8 @@ function GuestBuyContent() {
       setErrorMessage('');
     }
   };
+
+  const networkOutOfStock = packages.length > 0 && packages.every(p => p.outOfStock);
 
   const handleBuyClick = () => {
     if (!selectedBundle) return;
@@ -563,6 +569,15 @@ function GuestBuyContent() {
         </p>
       </div>
 
+      {networkOutOfStock && (
+        <div className="mb-4 px-3 py-2 rounded-xl bg-red-100 dark:bg-red-900/30 border border-red-300 dark:border-red-700 flex items-center gap-2">
+          <AlertCircle className="w-4 h-4 text-red-600 dark:text-red-400 shrink-0" />
+          <p className="text-sm font-semibold text-red-700 dark:text-red-300">
+            {getNetworkName(selectedNetwork)} is currently out of stock. Please pick another network.
+          </p>
+        </div>
+      )}
+
       {/* Products Grid - DataMart style colored cards */}
       {loadingPackages ? (
         <div className="flex items-center justify-center py-12">
@@ -590,17 +605,28 @@ function GuestBuyContent() {
                 <div className="relative">
                   <div
                     onClick={() => handleSelect(pkg)}
-                    className={`${cardStyle.card} overflow-hidden cursor-pointer transition-all hover:shadow-lg rounded-2xl hover:-translate-y-1 ${
-                      isSelected ? 'ring-2 ring-black/30 shadow-xl -translate-y-1' : ''
+                    className={`${cardStyle.card} relative overflow-hidden transition-all rounded-2xl ${
+                      pkg.outOfStock
+                        ? 'cursor-not-allowed opacity-50 grayscale'
+                        : `cursor-pointer hover:shadow-lg hover:-translate-y-1 ${
+                            isSelected ? 'ring-2 ring-black/30 shadow-xl -translate-y-1' : ''
+                          }`
                     }`}
                   >
+                    {pkg.outOfStock && (
+                      <span className="absolute top-2 right-2 z-10 bg-black/70 text-white text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider">
+                        Out of stock
+                      </span>
+                    )}
                     <div className="p-5">
                       {/* Top row: Logo + chevron */}
                       <div className="flex items-start justify-between mb-3">
                         <NetworkIcon network={selectedNetwork} size={40} />
-                        <button className={`w-8 h-8 rounded-full flex items-center justify-center ${cardStyle.chevronBg} transition`}>
-                          <ChevronDown className={`w-4 h-4 transition-transform ${isSelected ? 'rotate-180' : ''}`} />
-                        </button>
+                        {!pkg.outOfStock && (
+                          <button className={`w-8 h-8 rounded-full flex items-center justify-center ${cardStyle.chevronBg} transition`}>
+                            <ChevronDown className={`w-4 h-4 transition-transform ${isSelected ? 'rotate-180' : ''}`} />
+                          </button>
+                        )}
                       </div>
 
                       {/* GB amount */}
