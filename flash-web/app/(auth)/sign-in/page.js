@@ -35,21 +35,21 @@ export default function SignInPage() {
     setLoading(true);
     try {
       const res = await api.post('/auth/login', form);
-      const { token, user, subAgent } = res.data.data;
+      const { token, user } = res.data.data;
+      // Make sure no stale sub-agent session leaks into the main portal
+      localStorage.removeItem('ds_subagent');
+      localStorage.removeItem('ds_is_subagent');
       login(token, user);
       toast.success(`Welcome back, ${user.name.split(' ')[0]}!`);
-
-      if (subAgent) {
-        // Sub-agents go to their own portal
-        localStorage.setItem('ds_subagent', JSON.stringify(subAgent));
-        localStorage.setItem('ds_is_subagent', 'true');
-        router.push('/subagent/dashboard');
-      } else {
-        localStorage.removeItem('ds_subagent');
-        localStorage.removeItem('ds_is_subagent');
-        router.push(user.role === 'admin' ? '/admin' : '/dashboard');
-      }
+      router.push(user.role === 'admin' ? '/admin' : '/dashboard');
     } catch (err) {
+      // Sub-agent accounts are blocked from the main portal at the API layer
+      // and must use /subagent/login instead.
+      if (err.response?.data?.code === 'SUBAGENT_LOGIN_REQUIRED') {
+        toast.error('Sub-agent account — redirecting to the sub-agent log in.');
+        router.push('/subagent/login');
+        return;
+      }
       const msg = err.response?.data?.message || 'Login failed. Check your credentials.';
       toast.error(msg);
     } finally {
@@ -100,6 +100,12 @@ export default function SignInPage() {
       <p className="text-center text-sm text-gray-500 dark:text-gray-400 mt-6">
         Don&apos;t have an account?{' '}
         <Link href="/sign-up" className="text-amber-600 dark:text-amber-400 font-semibold hover:underline">Sign up</Link>
+      </p>
+      <p className="text-center text-xs text-gray-500 dark:text-gray-400 mt-3">
+        Sub-agent?{' '}
+        <Link href="/subagent/login" className="text-amber-600 dark:text-amber-400 font-semibold hover:underline">
+          Log in to the sub-agent portal
+        </Link>
       </p>
     </div>
   );

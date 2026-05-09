@@ -1,6 +1,7 @@
 'use client';
 import Link from 'next/link';
 import { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import { Menu, X, Phone, Mail, MapPin, Clock, ChevronRight, Shield } from 'lucide-react';
 import Logo from '@/components/shared/Logo';
 import Button from '@/components/ui/Button';
@@ -8,10 +9,22 @@ import { useAuth } from '@/context/AuthContext';
 import api from '@/lib/api';
 
 export default function MarketingLayout({ children }) {
+  const router = useRouter();
   const [mobileMenu, setMobileMenu] = useState(false);
   const [isDarkMode, setIsDarkMode] = useState(false);
   const [supportWhatsapp, setSupportWhatsapp] = useState('');
+  const [isSubAgentSession, setIsSubAgentSession] = useState(false);
   const { user } = useAuth();
+
+  // Sub-agents must never see any marketing/main-portal page. Redirect
+  // immediately if their session indicates a sub-agent login.
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    if (localStorage.getItem('ds_is_subagent') === 'true') {
+      setIsSubAgentSession(true);
+      router.replace('/subagent/dashboard');
+    }
+  }, [router]);
 
   useEffect(() => {
     const savedTheme = localStorage.getItem('theme');
@@ -36,6 +49,14 @@ export default function MarketingLayout({ children }) {
       document.documentElement.classList.add('dark');
     };
   }, []);
+
+  if (isSubAgentSession) {
+    return (
+      <div className="min-h-screen bg-gray-950 flex items-center justify-center">
+        <div className="w-8 h-8 border-3 border-amber-500 border-t-transparent rounded-full animate-spin" />
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-white dark:bg-gray-950">

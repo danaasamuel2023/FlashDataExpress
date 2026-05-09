@@ -2,7 +2,7 @@
 import { useState, useEffect, use } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { User, Mail, Lock, Phone, Store, Loader2, AlertCircle, CheckCircle } from 'lucide-react';
+import { User, Mail, Lock, Phone, Store, Loader2, AlertCircle, CheckCircle, Zap } from 'lucide-react';
 import toast from 'react-hot-toast';
 import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
@@ -121,6 +121,22 @@ export default function SubAgentRegisterPage({ params }) {
 
   return (
     <div className="min-h-screen bg-gray-950 flex flex-col">
+      {/* Sub-agent-only header. Logo is plain text, NOT a link to the main portal. */}
+      <div className="p-4 sm:p-6">
+        <div className="inline-flex items-center gap-2 select-none">
+          <div className="w-8 h-8 bg-amber-500 rounded-xl flex items-center justify-center">
+            <Zap className="w-4 h-4 text-white fill-white" />
+          </div>
+          <div className="flex items-baseline gap-0.5 text-lg font-extrabold tracking-tight">
+            <span className="text-white">Flash</span>
+            <span className="text-amber-500">Data</span>
+            <span className="ml-1 text-[9px] font-bold bg-amber-500 text-white px-1.5 py-0.5 rounded-md uppercase tracking-wider leading-none self-center">
+              Sub-Agent
+            </span>
+          </div>
+        </div>
+      </div>
+
       <div className="flex-1 flex items-center justify-center px-4 py-8">
         <div className="w-full max-w-[460px]">
           {/* Parent Agent banner */}

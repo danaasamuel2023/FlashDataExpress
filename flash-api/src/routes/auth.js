@@ -59,7 +59,7 @@ router.post('/register', [
       });
     }
 
-    const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, { expiresIn: '7d' });
+    const token = jwt.sign({ id: user._id, scope: 'agent' }, process.env.JWT_SECRET, { expiresIn: '7d' });
 
     res.status(201).json({
       status: 'success',
@@ -134,15 +134,23 @@ router.post('/login', [
       return res.status(401).json({ status: 'error', message: 'Invalid email or password' });
     }
 
-    // Detect whether the credentials belong to a registered sub-agent
-    // (sub-agents are routed to their own portal automatically)
-    const subAgentRecord = await SubAgent.findOne({ userId: user._id, status: 'registered' })
-      .populate('storeId', 'storeName storeSlug');
+    // Sub-agents must use the dedicated sub-agent login. They are not
+    // permitted to authenticate against the main agent portal at all,
+    // which would otherwise grant them access to /dashboard, /admin,
+    // and their parent agent's data.
+    const subAgentRecord = await SubAgent.findOne({ userId: user._id, status: 'registered' });
+    if (subAgentRecord) {
+      return res.status(403).json({
+        status: 'error',
+        code: 'SUBAGENT_LOGIN_REQUIRED',
+        message: 'This is a sub-agent account. Please log in at the sub-agent portal.',
+      });
+    }
 
     user.lastLogin = new Date();
     await user.save();
 
-    const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, { expiresIn: '7d' });
+    const token = jwt.sign({ id: user._id, scope: 'agent' }, process.env.JWT_SECRET, { expiresIn: '7d' });
 
     res.json({
       status: 'success',
@@ -157,15 +165,6 @@ router.post('/login', [
           referralCode: user.referralCode,
           walletBalance: user.walletBalance
         },
-        subAgent: subAgentRecord ? {
-          id: subAgentRecord._id,
-          storeName: subAgentRecord.storeName,
-          storeSlug: subAgentRecord.storeSlug,
-          parentStoreName: subAgentRecord.storeId?.storeName,
-          totalEarnings: subAgentRecord.totalEarnings,
-          totalSales: subAgentRecord.totalSales,
-          pendingBalance: subAgentRecord.pendingBalance,
-        } : null,
       }
     });
   } catch (error) {

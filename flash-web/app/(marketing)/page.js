@@ -46,6 +46,12 @@ export default function LandingPage() {
   const [currentTime, setCurrentTime] = useState(new Date());
 
   useEffect(() => {
+    // Sub-agents must never land on the main portal — including by clicking the
+    // Flash Data Express logo. Send them to /subagent/dashboard directly.
+    if (typeof window !== 'undefined' && localStorage.getItem('ds_is_subagent') === 'true') {
+      router.replace('/subagent/dashboard');
+      return;
+    }
     if (!loading && user) {
       router.replace('/dashboard');
     }

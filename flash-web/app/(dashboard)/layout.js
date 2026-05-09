@@ -56,6 +56,14 @@ export default function DashboardLayout({ children }) {
     if (isMobile) setSidebarOpen(false);
   }, [pathname, isMobile]);
 
+  // Bounce sub-agents on the very first render — they must not see the
+  // main portal even momentarily.
+  useEffect(() => {
+    if (typeof window !== 'undefined' && localStorage.getItem('ds_is_subagent') === 'true') {
+      router.replace('/subagent/dashboard');
+    }
+  }, [router]);
+
   useEffect(() => {
     if (!loading && !user) {
       router.push('/sign-in');
@@ -115,7 +123,9 @@ export default function DashboardLayout({ children }) {
     router.push('/store/setup');
   };
 
-  if (loading || !user) {
+  const isSubAgentSession = typeof window !== 'undefined' && localStorage.getItem('ds_is_subagent') === 'true';
+
+  if (loading || !user || isSubAgentSession) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
         <div className="w-8 h-8 border-3 border-primary border-t-transparent rounded-full animate-spin" />

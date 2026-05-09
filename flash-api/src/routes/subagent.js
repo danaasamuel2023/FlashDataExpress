@@ -19,6 +19,9 @@ const subagentAuth = async (req, res, next) => {
     if (!token) return res.status(401).json({ status: 'error', message: 'No token provided' });
 
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    if (decoded.scope !== 'subagent') {
+      return res.status(403).json({ status: 'error', message: 'Sub-agent login required' });
+    }
     const user = await User.findById(decoded.id);
     if (!user || !user.isActive) return res.status(401).json({ status: 'error', message: 'Invalid token' });
 
@@ -265,8 +268,8 @@ router.post('/register', [
       await SubAgentProduct.insertMany(subProducts);
     }
 
-    // Generate JWT
-    const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, { expiresIn: '7d' });
+    // Generate sub-agent-scoped JWT
+    const token = jwt.sign({ id: user._id, scope: 'subagent' }, process.env.JWT_SECRET, { expiresIn: '7d' });
 
     res.status(201).json({
       status: 'success',
@@ -339,7 +342,7 @@ router.post('/login', [
     user.lastLogin = new Date();
     await user.save();
 
-    const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, { expiresIn: '7d' });
+    const token = jwt.sign({ id: user._id, scope: 'subagent' }, process.env.JWT_SECRET, { expiresIn: '7d' });
 
     res.json({
       status: 'success',

@@ -11,11 +11,22 @@ export function AuthProvider({ children }) {
   useEffect(() => {
     const token = localStorage.getItem('ds_token');
     const cached = localStorage.getItem('ds_user');
+    const isSubAgent = localStorage.getItem('ds_is_subagent') === 'true';
+
     if (token && cached) {
       try {
         setUser(JSON.parse(cached));
       } catch {}
-      // Verify token is still valid
+
+      // Sub-agent tokens are scoped and cannot call /auth/me — that endpoint
+      // would 403 and clear the session. Sub-agent pages validate the token
+      // themselves via /subagent/* endpoints.
+      if (isSubAgent) {
+        setLoading(false);
+        return;
+      }
+
+      // Verify main-portal token is still valid
       api.get('/auth/me').then(res => {
         const u = res.data.data.user;
         setUser(u);
@@ -37,6 +48,8 @@ export function AuthProvider({ children }) {
   const logout = () => {
     localStorage.removeItem('ds_token');
     localStorage.removeItem('ds_user');
+    localStorage.removeItem('ds_subagent');
+    localStorage.removeItem('ds_is_subagent');
     setUser(null);
   };
 
