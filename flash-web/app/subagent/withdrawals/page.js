@@ -106,9 +106,13 @@ export default function SubAgentWithdrawalsPage() {
     <div className="min-h-screen bg-gray-950">
       <div className="bg-gray-900 border-b border-gray-800">
         <div className="max-w-3xl mx-auto px-4 py-4 flex items-center gap-3">
-          <Link href="/subagent/dashboard" className="p-2 hover:bg-gray-800 rounded-lg transition-colors">
+          <button
+            onClick={() => router.back()}
+            className="p-2 hover:bg-gray-800 rounded-lg transition-colors"
+            aria-label="Go back"
+          >
             <ArrowLeft className="w-5 h-5 text-gray-400" />
-          </Link>
+          </button>
           <div>
             <h1 className="text-lg font-extrabold text-white">Withdrawals</h1>
             <p className="text-xs text-gray-500">Cash out your earnings</p>

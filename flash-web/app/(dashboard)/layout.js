@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import {
   Home, ShoppingBag, Clock, Wallet, Gift, UserCircle, Store,
-  Menu, X, ChevronRight, LogOut, Zap, Package, MessageCircle,
+  Menu, X, ChevronRight, ChevronLeft, LogOut, Zap, Package, MessageCircle,
   TrendingUp, DollarSign, Sparkles
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
@@ -266,6 +266,14 @@ export default function DashboardLayout({ children }) {
         <div className="md:hidden h-14" />
         <main className="flex-1 overflow-y-auto">
           <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-6 pb-24 md:pb-8">
+            {pathname !== '/dashboard' && (
+              <button
+                onClick={() => router.back()}
+                className="inline-flex items-center gap-1 text-sm font-semibold text-text-muted hover:text-primary mb-4 px-2.5 py-1.5 rounded-lg hover:bg-white/[0.03] transition-colors"
+              >
+                <ChevronLeft className="w-4 h-4" /> Back
+              </button>
+            )}
             {children}
           </div>
         </main>
