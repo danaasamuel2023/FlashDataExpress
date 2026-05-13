@@ -360,11 +360,22 @@ export default function StoreDashboardPage() {
             <p className="text-text-muted text-sm text-center py-8">No store sales today yet. Share your store link to start selling!</p>
           ) : (
             <div className="space-y-3 max-h-80 overflow-y-auto">
-              {dailySales.sales.map((sale, i) => (
+              {dailySales.sales.map((sale, i) => {
+                const sub = sale.storeDetails?.subAgentId;
+                const subLabel = sub && typeof sub === 'object'
+                  ? (sub.storeName || sub.contactPhone || sub.contactWhatsapp)
+                  : null;
+                return (
                 <div key={i} className="flex items-center justify-between py-2 border-b border-white/[0.04] last:border-0">
                   <div>
                     <p className="font-semibold text-sm text-white">{sale.network} {sale.capacity}GB</p>
                     <p className="text-xs text-text-muted">{sale.phoneNumber}</p>
+                    {subLabel && (
+                      <p className="text-[10px] font-semibold text-primary mt-0.5">
+                        Sub-agent: {subLabel}
+                        {sub.contactPhone && sub.storeName ? ` • ${sub.contactPhone}` : ''}
+                      </p>
+                    )}
                     <p className="text-[10px] text-text-muted mt-0.5">{formatDate(sale.createdAt)} &middot; {sale.reference}</p>
                   </div>
                   <div className="text-right">
@@ -379,7 +390,8 @@ export default function StoreDashboardPage() {
                     }`}>{sale.status}</span>
                   </div>
                 </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </Card>

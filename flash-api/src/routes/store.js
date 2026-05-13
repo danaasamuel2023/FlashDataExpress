@@ -295,6 +295,7 @@ router.get('/sales', auth, async (req, res) => {
     if (!store) return res.status(404).json({ status: 'error', message: 'Store not found' });
 
     const sales = await DataPurchase.find({ 'storeDetails.storeId': store._id })
+      .populate({ path: 'storeDetails.subAgentId', select: 'storeName contactPhone contactWhatsapp' })
       .sort({ createdAt: -1 })
       .limit(100);
     res.json({ status: 'success', data: sales });
@@ -316,7 +317,9 @@ router.get('/daily-sales', auth, async (req, res) => {
     const sales = await DataPurchase.find({
       'storeDetails.storeId': store._id,
       createdAt: { $gte: todayStart },
-    }).sort({ createdAt: -1 }).limit(200).lean();
+    })
+      .populate({ path: 'storeDetails.subAgentId', select: 'storeName contactPhone contactWhatsapp' })
+      .sort({ createdAt: -1 }).limit(200).lean();
 
     const todayProfit = sales.reduce((sum, s) => sum + (s.storeDetails?.agentProfit || 0), 0);
     const todayRevenue = sales.reduce((sum, s) => sum + (s.price || 0), 0);
