@@ -4,6 +4,7 @@ import { useSearchParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Loader2, RefreshCw, Globe, Store as StoreIcon, ArrowLeft, ShoppingBag, DollarSign, TrendingUp } from 'lucide-react';
 import Card from '@/components/ui/Card';
+import SourceBadge from '@/components/shared/SourceBadge';
 import { formatCurrency, formatDate } from '@/lib/constants';
 import api from '@/lib/api';
 
@@ -135,11 +136,15 @@ export default function AdminOrdersPage() {
               return (
                 <div key={i} className="flex items-center justify-between py-2 border-b border-white/[0.04] last:border-0">
                   <div>
-                    <p className="font-semibold text-sm text-white">{order.phoneNumber}</p>
+                    <div className="flex items-center gap-2">
+                      <p className="font-semibold text-sm text-white">{order.phoneNumber}</p>
+                      <SourceBadge source={order.purchaseSource} size="xs" />
+                    </div>
                     <p className="text-xs text-text-muted">
                       {order.network} &middot; {order.capacity}GB
-                      {order.purchaseSource === 'guest' && <span className="ml-1 text-primary">(Guest)</span>}
-                      {order.purchaseSource === 'store' && <span className="ml-1 text-accent">(Store)</span>}
+                      {order.storeDetails?.storeName && (
+                        <span className="ml-1 text-blue-400">&middot; {order.storeDetails.storeName}</span>
+                      )}
                     </p>
                     <p className="text-[10px] text-text-muted mt-0.5">{formatDate(order.createdAt)} &middot; {order.reference}</p>
                   </div>

@@ -4,6 +4,7 @@ import { Loader2, RefreshCw, Search, Calendar, Undo2, AlertTriangle, Globe, Stor
 import toast from 'react-hot-toast';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
+import SourceBadge from '@/components/shared/SourceBadge';
 import { formatCurrency, formatDate } from '@/lib/constants';
 import api from '@/lib/api';
 
@@ -326,11 +327,12 @@ export default function AdminRefundsPage() {
                       )}
                     </td>
                     <td className="py-3">
-                      <p className="text-white text-xs font-semibold">
-                        {r.capacity}GB {NETWORK_LABELS[r.network] || r.network} → {r.phoneNumber}
-                        {r.purchaseSource === 'guest' && <span className="ml-1 text-primary">(Guest)</span>}
-                        {r.purchaseSource === 'store' && <span className="ml-1 text-accent">(Store)</span>}
-                      </p>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <p className="text-white text-xs font-semibold">
+                          {r.capacity}GB {NETWORK_LABELS[r.network] || r.network} → {r.phoneNumber}
+                        </p>
+                        <SourceBadge source={r.purchaseSource} size="xs" />
+                      </div>
                       <p className="text-text-muted text-[10px]">Ref: {r.reference}</p>
                       {r.failureReason && (
                         <p className="text-text-muted text-[10px] italic mt-0.5">

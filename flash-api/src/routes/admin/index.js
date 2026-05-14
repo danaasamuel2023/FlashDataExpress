@@ -32,16 +32,13 @@ router.get('/dashboard', async (req, res) => {
     const todayActiveStatuses = ['completed', 'processing', 'pending'];
 
     const [
-      totalUsers, totalOrders, revenueAgg, depositsAgg,
+      totalUsers, totalOrders, depositsAgg,
       todayOrdersBySource, todayBySource,
+      lifetimeOrdersBySource, lifetimeBySource,
       recentOrders, settings, totalStoresActivated
     ] = await Promise.all([
       User.countDocuments(),
       DataPurchase.countDocuments(),
-      Transaction.aggregate([
-        { $match: { type: 'purchase', status: 'completed' } },
-        { $group: { _id: null, total: { $sum: '$amount' } } },
-      ]),
       Transaction.aggregate([
         { $match: { type: 'deposit', status: 'completed' } },
         { $group: { _id: null, total: { $sum: '$amount' } } },
@@ -54,6 +51,21 @@ router.get('/dashboard', async (req, res) => {
       // Today's revenue + profit by source
       DataPurchase.aggregate([
         { $match: { createdAt: { $gte: todayStart }, status: { $in: todayActiveStatuses } } },
+        {
+          $group: {
+            _id: '$purchaseSource',
+            revenue: { $sum: '$price' },
+            cost: { $sum: '$costPrice' },
+          },
+        },
+      ]),
+      // Lifetime order count by source (all statuses)
+      DataPurchase.aggregate([
+        { $group: { _id: '$purchaseSource', count: { $sum: 1 } } },
+      ]),
+      // Lifetime revenue + profit by source (active orders only)
+      DataPurchase.aggregate([
+        { $match: { status: { $in: todayActiveStatuses } } },
         {
           $group: {
             _id: '$purchaseSource',
@@ -84,12 +96,23 @@ router.get('/dashboard', async (req, res) => {
       profit: sumBy(todayBySource, isStore, 'revenue') - sumBy(todayBySource, isStore, 'cost'),
     };
 
+    const lifetimePortal = {
+      orders: sumBy(lifetimeOrdersBySource, isPortal, 'count'),
+      revenue: sumBy(lifetimeBySource, isPortal, 'revenue'),
+      profit: sumBy(lifetimeBySource, isPortal, 'revenue') - sumBy(lifetimeBySource, isPortal, 'cost'),
+    };
+    const lifetimeStore = {
+      orders: sumBy(lifetimeOrdersBySource, isStore, 'count'),
+      revenue: sumBy(lifetimeBySource, isStore, 'revenue'),
+      profit: sumBy(lifetimeBySource, isStore, 'revenue') - sumBy(lifetimeBySource, isStore, 'cost'),
+    };
+
     res.json({
       status: 'success',
       data: {
         totalUsers,
         totalOrders,
-        totalRevenue: revenueAgg[0]?.total || 0,
+        totalRevenue: lifetimePortal.revenue + lifetimeStore.revenue,
         totalDeposits: depositsAgg[0]?.total || 0,
         totalStoresActivated,
         // Combined today totals (kept for backwards compatibility)
@@ -99,6 +122,8 @@ router.get('/dashboard', async (req, res) => {
         // Split: main portal vs agent stores
         todayPortal: portal,
         todayStore: store,
+        lifetimePortal,
+        lifetimeStore,
         basePrices: settings?.pricing?.basePrices || {},
         sellingPrices: settings?.pricing?.sellingPrices || {},
         recentOrders,

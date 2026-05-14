@@ -1,9 +1,10 @@
 'use client';
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { Users, ShoppingBag, Wallet, TrendingUp, Loader2, RefreshCw, DollarSign, CalendarDays, Pause, Play, AlertTriangle, Store as StoreIcon, Globe, PackageX, PackageCheck, ArrowRight } from 'lucide-react';
+import { Users, ShoppingBag, TrendingUp, Loader2, RefreshCw, DollarSign, CalendarDays, Pause, Play, AlertTriangle, Store as StoreIcon, Globe, PackageX, PackageCheck, ArrowRight } from 'lucide-react';
 import toast from 'react-hot-toast';
 import Card from '@/components/ui/Card';
+import SourceBadge from '@/components/shared/SourceBadge';
 import { formatCurrency } from '@/lib/constants';
 import api from '@/lib/api';
 
@@ -98,15 +99,10 @@ export default function AdminOverviewPage() {
     );
   }
 
-  const allTimeCards = [
-    { label: 'Total Users', value: stats?.totalUsers || 0, icon: Users, color: 'primary' },
-    { label: 'Total Orders', value: stats?.totalOrders || 0, icon: ShoppingBag, color: 'success' },
-    { label: 'Revenue', value: formatCurrency(stats?.totalRevenue || 0), icon: TrendingUp, color: 'accent' },
-    { label: 'Stores Activated', value: stats?.totalStoresActivated || 0, icon: StoreIcon, color: 'blue-500' },
-  ];
-
   const portalToday = stats?.todayPortal || { orders: 0, revenue: 0, profit: 0 };
   const storeToday = stats?.todayStore || { orders: 0, revenue: 0, profit: 0 };
+  const portalLifetime = stats?.lifetimePortal || { orders: 0, revenue: 0, profit: 0 };
+  const storeLifetime = stats?.lifetimeStore || { orders: 0, revenue: 0, profit: 0 };
 
   // Build comparison table: network → capacity → { selling, base }
   const sellingPrices = stats?.sellingPrices || {};
@@ -219,7 +215,7 @@ export default function AdminOverviewPage() {
         </div>
         <div className="grid grid-cols-3 gap-4">
           <Link href="/admin/orders?source=portal">
-            <Card hover>
+            <Card hover className="!border-primary/20">
               <div className="flex items-center gap-3">
                 <div className="w-12 h-12 bg-primary/10 rounded-xl flex items-center justify-center">
                   <CalendarDays className="w-6 h-6 text-primary" />
@@ -232,7 +228,7 @@ export default function AdminOverviewPage() {
             </Card>
           </Link>
           <Link href="/admin/orders?source=portal">
-            <Card hover>
+            <Card hover className="!border-primary/20">
               <div className="flex items-center gap-3">
                 <div className="w-12 h-12 bg-success/10 rounded-xl flex items-center justify-center">
                   <ShoppingBag className="w-6 h-6 text-success" />
@@ -245,7 +241,7 @@ export default function AdminOverviewPage() {
             </Card>
           </Link>
           <Link href="/admin/orders?source=portal">
-            <Card hover>
+            <Card hover className="!border-primary/20">
               <div className="flex items-center gap-3">
                 <div className="w-12 h-12 bg-accent/10 rounded-xl flex items-center justify-center">
                   <DollarSign className="w-6 h-6 text-accent" />
@@ -273,7 +269,7 @@ export default function AdminOverviewPage() {
         </div>
         <div className="grid grid-cols-3 gap-4">
           <Link href="/admin/orders?source=store">
-            <Card hover>
+            <Card hover className="!border-blue-500/20">
               <div className="flex items-center gap-3">
                 <div className="w-12 h-12 bg-blue-500/10 rounded-xl flex items-center justify-center">
                   <CalendarDays className="w-6 h-6 text-blue-500" />
@@ -286,7 +282,7 @@ export default function AdminOverviewPage() {
             </Card>
           </Link>
           <Link href="/admin/orders?source=store">
-            <Card hover>
+            <Card hover className="!border-blue-500/20">
               <div className="flex items-center gap-3">
                 <div className="w-12 h-12 bg-success/10 rounded-xl flex items-center justify-center">
                   <ShoppingBag className="w-6 h-6 text-success" />
@@ -299,7 +295,7 @@ export default function AdminOverviewPage() {
             </Card>
           </Link>
           <Link href="/admin/orders?source=store">
-            <Card hover>
+            <Card hover className="!border-blue-500/20">
               <div className="flex items-center gap-3">
                 <div className="w-12 h-12 bg-accent/10 rounded-xl flex items-center justify-center">
                   <DollarSign className="w-6 h-6 text-accent" />
@@ -314,26 +310,118 @@ export default function AdminOverviewPage() {
         </div>
       </div>
 
-      {/* All-time stats */}
+      {/* All-time — Main Portal (kept fully separate from store totals) */}
       <div>
-        <h2 className="font-bold text-sm text-text-muted uppercase tracking-wider mb-3">All Time</h2>
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-          {allTimeCards.map((card, i) => {
-            const Icon = card.icon;
-            return (
-              <Card key={i}>
-                <div className="flex items-center gap-3">
-                  <div className={`w-12 h-12 bg-${card.color}/10 rounded-xl flex items-center justify-center`}>
-                    <Icon className={`w-6 h-6 text-${card.color}`} />
-                  </div>
-                  <div>
-                    <p className="text-2xl font-extrabold text-white">{card.value}</p>
-                    <p className="text-xs text-text-muted">{card.label}</p>
-                  </div>
-                </div>
-              </Card>
-            );
-          })}
+        <div className="flex items-center gap-2 mb-3">
+          <Globe className="w-4 h-4 text-primary" />
+          <h2 className="font-bold text-sm text-text-muted uppercase tracking-wider">All Time &middot; Main Portal</h2>
+        </div>
+        <div className="grid grid-cols-3 gap-4">
+          <Card className="!border-primary/20">
+            <div className="flex items-center gap-3">
+              <div className="w-12 h-12 bg-primary/10 rounded-xl flex items-center justify-center">
+                <ShoppingBag className="w-6 h-6 text-primary" />
+              </div>
+              <div>
+                <p className="text-2xl font-extrabold text-white">{portalLifetime.orders}</p>
+                <p className="text-xs text-text-muted">Portal Orders</p>
+              </div>
+            </div>
+          </Card>
+          <Card className="!border-primary/20">
+            <div className="flex items-center gap-3">
+              <div className="w-12 h-12 bg-success/10 rounded-xl flex items-center justify-center">
+                <TrendingUp className="w-6 h-6 text-success" />
+              </div>
+              <div>
+                <p className="text-2xl font-extrabold text-white">{formatCurrency(portalLifetime.revenue)}</p>
+                <p className="text-xs text-text-muted">Portal Revenue</p>
+              </div>
+            </div>
+          </Card>
+          <Card className="!border-primary/20">
+            <div className="flex items-center gap-3">
+              <div className="w-12 h-12 bg-accent/10 rounded-xl flex items-center justify-center">
+                <DollarSign className="w-6 h-6 text-accent" />
+              </div>
+              <div>
+                <p className="text-2xl font-extrabold text-white">{formatCurrency(portalLifetime.profit)}</p>
+                <p className="text-xs text-text-muted">Portal Profit</p>
+              </div>
+            </div>
+          </Card>
+        </div>
+      </div>
+
+      {/* All-time — Agent Stores (separate; never combined with portal) */}
+      <div>
+        <div className="flex items-center gap-2 mb-3">
+          <StoreIcon className="w-4 h-4 text-blue-500" />
+          <h2 className="font-bold text-sm text-text-muted uppercase tracking-wider">All Time &middot; Agent Stores</h2>
+        </div>
+        <div className="grid grid-cols-3 gap-4">
+          <Card className="!border-blue-500/20">
+            <div className="flex items-center gap-3">
+              <div className="w-12 h-12 bg-blue-500/10 rounded-xl flex items-center justify-center">
+                <ShoppingBag className="w-6 h-6 text-blue-500" />
+              </div>
+              <div>
+                <p className="text-2xl font-extrabold text-white">{storeLifetime.orders}</p>
+                <p className="text-xs text-text-muted">Store Orders</p>
+              </div>
+            </div>
+          </Card>
+          <Card className="!border-blue-500/20">
+            <div className="flex items-center gap-3">
+              <div className="w-12 h-12 bg-success/10 rounded-xl flex items-center justify-center">
+                <TrendingUp className="w-6 h-6 text-success" />
+              </div>
+              <div>
+                <p className="text-2xl font-extrabold text-white">{formatCurrency(storeLifetime.revenue)}</p>
+                <p className="text-xs text-text-muted">Store Revenue</p>
+              </div>
+            </div>
+          </Card>
+          <Card className="!border-blue-500/20">
+            <div className="flex items-center gap-3">
+              <div className="w-12 h-12 bg-accent/10 rounded-xl flex items-center justify-center">
+                <DollarSign className="w-6 h-6 text-accent" />
+              </div>
+              <div>
+                <p className="text-2xl font-extrabold text-white">{formatCurrency(storeLifetime.profit)}</p>
+                <p className="text-xs text-text-muted">Platform Margin</p>
+              </div>
+            </div>
+          </Card>
+        </div>
+      </div>
+
+      {/* Platform meta — users & store count */}
+      <div>
+        <h2 className="font-bold text-sm text-text-muted uppercase tracking-wider mb-3">Platform</h2>
+        <div className="grid grid-cols-2 gap-4">
+          <Card>
+            <div className="flex items-center gap-3">
+              <div className="w-12 h-12 bg-primary/10 rounded-xl flex items-center justify-center">
+                <Users className="w-6 h-6 text-primary" />
+              </div>
+              <div>
+                <p className="text-2xl font-extrabold text-white">{stats?.totalUsers || 0}</p>
+                <p className="text-xs text-text-muted">Total Users</p>
+              </div>
+            </div>
+          </Card>
+          <Card>
+            <div className="flex items-center gap-3">
+              <div className="w-12 h-12 bg-blue-500/10 rounded-xl flex items-center justify-center">
+                <StoreIcon className="w-6 h-6 text-blue-500" />
+              </div>
+              <div>
+                <p className="text-2xl font-extrabold text-white">{stats?.totalStoresActivated || 0}</p>
+                <p className="text-xs text-text-muted">Stores Activated</p>
+              </div>
+            </div>
+          </Card>
         </div>
       </div>
 
@@ -425,12 +513,11 @@ export default function AdminOverviewPage() {
             {stats.recentOrders.map((order, i) => (
               <div key={i} className="flex items-center justify-between py-2 border-b border-white/[0.04] last:border-0">
                 <div>
-                  <p className="font-semibold text-sm text-white">{order.phoneNumber}</p>
-                  <p className="text-xs text-text-muted">
-                    {order.network} &middot; {order.capacity}GB
-                    {order.purchaseSource === 'guest' && <span className="ml-1 text-primary">(Guest)</span>}
-                    {order.purchaseSource === 'store' && <span className="ml-1 text-accent">(Store)</span>}
-                  </p>
+                  <div className="flex items-center gap-2">
+                    <p className="font-semibold text-sm text-white">{order.phoneNumber}</p>
+                    <SourceBadge source={order.purchaseSource} size="xs" />
+                  </div>
+                  <p className="text-xs text-text-muted">{order.network} &middot; {order.capacity}GB</p>
                 </div>
                 <div className="text-right">
                   <p className="font-bold text-sm text-white">{formatCurrency(order.price)}</p>
