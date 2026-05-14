@@ -75,6 +75,9 @@ export default function SubAgentRegisterPage({ params }) {
       localStorage.setItem('ds_subagent', JSON.stringify(subAgent));
       localStorage.setItem('ds_user', JSON.stringify(user));
       localStorage.setItem('ds_is_subagent', 'true');
+      if (subAgent.parentStoreSlug) {
+        localStorage.setItem('ds_subagent_parent_slug', subAgent.parentStoreSlug);
+      }
 
       toast.success('Registration successful! Welcome aboard!');
       router.push('/subagent/dashboard');
@@ -111,8 +114,7 @@ export default function SubAgentRegisterPage({ params }) {
           <h1 className="text-xl font-bold text-white mb-2">Invalid Invite Link</h1>
           <p className="text-gray-400 text-sm mb-6">{inviteError}</p>
           <p className="text-gray-500 text-xs">
-            Already registered?{' '}
-            <Link href="/subagent/login" className="text-amber-400 hover:underline">Log in here</Link>
+            Already registered? Ask your parent agent for their sub-agent login link.
           </p>
         </div>
       </div>
@@ -223,7 +225,11 @@ export default function SubAgentRegisterPage({ params }) {
 
             <p className="text-center text-sm text-gray-500 mt-6">
               Already have a sub-agent account?{' '}
-              <Link href="/subagent/login" className="text-amber-400 font-semibold hover:underline">Log in</Link>
+              {inviteInfo?.storeSlug ? (
+                <Link href={`/subagent/login/${inviteInfo.storeSlug}`} className="text-amber-400 font-semibold hover:underline">Log in</Link>
+              ) : (
+                <span className="text-gray-400">Use your parent agent&apos;s login link.</span>
+              )}
             </p>
           </div>
         </div>

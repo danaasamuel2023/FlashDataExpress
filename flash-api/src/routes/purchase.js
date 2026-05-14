@@ -259,6 +259,153 @@ router.post('/buy', auth, ordersPaused, async (req, res) => {
   }
 });
 
+// POST /api/purchase/bulk-buy — process many wallet-funded orders in one request.
+// Validates every row first, debits the wallet once for the total, then
+// submits each order to DataMart individually. Per-row failures are
+// recorded as failed purchases; auto-refund is intentionally NOT triggered
+// (matches the policy in /buy — admin handles refunds via /admin/refunds).
+router.post('/bulk-buy', auth, ordersPaused, async (req, res) => {
+  try {
+    const { items } = req.body;
+    if (!Array.isArray(items) || items.length === 0) {
+      return res.status(400).json({ status: 'error', message: 'No orders provided' });
+    }
+    if (items.length > 100) {
+      return res.status(400).json({ status: 'error', message: 'Bulk purchase is limited to 100 orders per request' });
+    }
+
+    const settings = await Settings.getSettings();
+    const sellingPrices = settings?.pricing?.sellingPrices || {};
+    const basePrices = settings?.pricing?.basePrices || {};
+    const outOfStock = new Set(settings?.outOfStockNetworks || []);
+
+    // Validate every row up front and resolve prices. Any invalid row blocks
+    // the whole batch so the agent can fix it before paying.
+    const prepared = [];
+    for (let i = 0; i < items.length; i++) {
+      const row = items[i] || {};
+      const { network, capacity, phoneNumber } = row;
+      const rowLabel = `Row ${i + 1}`;
+
+      if (!network || !capacity || !phoneNumber) {
+        return res.status(400).json({ status: 'error', message: `${rowLabel}: network, capacity and phone number are required` });
+      }
+      if (!VALID_NETWORKS.includes(network)) {
+        return res.status(400).json({ status: 'error', message: `${rowLabel}: invalid network` });
+      }
+      if (outOfStock.has(network)) {
+        return res.status(400).json({ status: 'error', message: `${rowLabel}: ${network} is currently out of stock` });
+      }
+      if (!validateGhanaPhone(phoneNumber)) {
+        return res.status(400).json({ status: 'error', message: `${rowLabel}: invalid Ghana phone number` });
+      }
+      const price = (sellingPrices[network] || {})[String(capacity)];
+      if (!price) {
+        return res.status(400).json({ status: 'error', message: `${rowLabel}: ${capacity}GB ${network} is not available` });
+      }
+      const costPrice = (basePrices[network] || {})[String(capacity)] || 0;
+      prepared.push({ network, capacity, phoneNumber, price, costPrice });
+    }
+
+    const total = Math.round(prepared.reduce((s, r) => s + r.price, 0) * 100) / 100;
+
+    // Atomic wallet debit for the whole batch.
+    const updatedUser = await User.findOneAndUpdate(
+      { _id: req.user._id, walletBalance: { $gte: total } },
+      { $inc: { walletBalance: -total } },
+      { new: true }
+    );
+    if (!updatedUser) {
+      return res.status(400).json({ status: 'error', message: 'Insufficient balance for the full bulk order' });
+    }
+
+    const batchRef = generateReference('BULK');
+
+    // Single summary transaction for the wallet debit.
+    await Transaction.create({
+      userId: req.user._id,
+      type: 'purchase',
+      amount: total,
+      balanceBefore: updatedUser.walletBalance + total,
+      balanceAfter: updatedUser.walletBalance,
+      status: 'completed',
+      reference: batchRef,
+      description: `Bulk purchase: ${prepared.length} orders`,
+      metadata: { source: 'bulk_purchase', count: prepared.length, batchRef },
+    });
+
+    const results = [];
+    for (const row of prepared) {
+      const reference = generateReference('PUR');
+      let purchase;
+      try {
+        purchase = await DataPurchase.create({
+          userId: req.user._id,
+          phoneNumber: row.phoneNumber,
+          network: row.network,
+          capacity: row.capacity,
+          price: row.price,
+          costPrice: row.costPrice,
+          reference,
+          provider: 'datamart',
+          status: 'pending',
+          purchaseSource: 'direct',
+        });
+      } catch (err) {
+        results.push({
+          phoneNumber: row.phoneNumber, network: row.network, capacity: row.capacity, price: row.price,
+          reference, status: 'failed', error: 'Could not record order',
+        });
+        continue;
+      }
+
+      try {
+        const result = await datamartService.purchaseData({
+          network: row.network, capacity: row.capacity, phoneNumber: row.phoneNumber,
+        });
+        purchase.datamartReference = result?.reference || result?.orderReference;
+        purchase.status = 'processing';
+        await purchase.save();
+        results.push({
+          phoneNumber: row.phoneNumber, network: row.network, capacity: row.capacity, price: row.price,
+          reference, status: 'processing',
+        });
+      } catch (err) {
+        const providerMessage = err.response?.data?.message || err.message || 'Unknown error';
+        purchase.status = 'failed';
+        purchase.failureReason = providerMessage;
+        await purchase.save();
+        results.push({
+          phoneNumber: row.phoneNumber, network: row.network, capacity: row.capacity, price: row.price,
+          reference, status: 'failed', error: providerMessage,
+        });
+      }
+    }
+
+    // Referral commission on the full debited amount.
+    referralService.processCommission(req.user._id, total, null);
+
+    const failedCount = results.filter(r => r.status === 'failed').length;
+    res.json({
+      status: 'success',
+      message: failedCount === 0
+        ? `${results.length} orders submitted`
+        : `${results.length - failedCount} submitted, ${failedCount} failed — admin will review failures.`,
+      data: {
+        batchRef,
+        total,
+        count: results.length,
+        failedCount,
+        results,
+        walletBalance: updatedUser.walletBalance,
+      },
+    });
+  } catch (err) {
+    console.error('Bulk purchase error:', err.message);
+    res.status(500).json({ status: 'error', message: 'Something went wrong. Please try again.' });
+  }
+});
+
 // POST /api/purchase/buy-with-momo - Pay directly with MoMo via Paystack
 router.post('/buy-with-momo', auth, ordersPaused, async (req, res) => {
   try {

@@ -22,6 +22,7 @@ export default function SubAgentsPage() {
   }, []);
 
   const buildShareLink = (code) => `${window.location.origin}/subagent/register/${code}`;
+  const buildLoginLink = (slug) => `${window.location.origin}/subagent/login/${slug}`;
 
   const fetchData = async () => {
     try {
@@ -81,6 +82,15 @@ export default function SubAgentsPage() {
     navigator.clipboard.writeText(shareLink);
     setCopiedId('SHARED');
     toast.success('Invite link copied!');
+    setTimeout(() => setCopiedId(null), 2000);
+  };
+
+  const handleCopyLoginLink = () => {
+    if (!store?.storeSlug) return;
+    const link = buildLoginLink(store.storeSlug);
+    navigator.clipboard.writeText(link);
+    setCopiedId('LOGIN');
+    toast.success('Sub-agent login link copied!');
     setTimeout(() => setCopiedId(null), 2000);
   };
 
@@ -178,6 +188,37 @@ export default function SubAgentsPage() {
               >
                 {rotating ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
                 Rotate
+              </button>
+            </div>
+          </div>
+        </Card>
+      )}
+
+      {/* Sub-agent login link — share with already-registered sub-agents */}
+      {store?.storeSlug && (
+        <Card>
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            <div className="flex items-start gap-3 min-w-0 flex-1">
+              <div className="w-10 h-10 bg-emerald-500/10 rounded-xl flex items-center justify-center flex-shrink-0">
+                <ExternalLink className="w-5 h-5 text-emerald-400" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="font-bold text-white text-sm">Sub-agent login link</p>
+                <p className="text-xs text-text-muted mt-0.5">
+                  Share this with sub-agents who already registered. Only your sub-agents can log in here.
+                </p>
+                <p className="text-xs text-text-muted mt-1 truncate font-mono">
+                  {`${typeof window !== 'undefined' ? window.location.origin : ''}/subagent/login/${store.storeSlug}`}
+                </p>
+              </div>
+            </div>
+            <div className="flex gap-2 flex-shrink-0">
+              <button
+                onClick={handleCopyLoginLink}
+                className="flex items-center gap-1.5 px-3 py-2 bg-emerald-500/10 text-emerald-400 rounded-lg text-xs font-bold hover:bg-emerald-500/20 transition-colors"
+              >
+                {copiedId === 'LOGIN' ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                {copiedId === 'LOGIN' ? 'Copied' : 'Copy'}
               </button>
             </div>
           </div>

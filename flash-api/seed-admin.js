@@ -8,7 +8,7 @@ async function seedAdmin() {
 
   const User = mongoose.connection.collection('users');
 
-  const existing = await User.findOne({ email: 'samtech@gmail.com' });
+  const existing = await User.findOne({ email: '@gmail.com' });
   if (existing) {
     if (existing.role !== 'admin') {
       await User.updateOne({ _id: existing._id }, { $set: { role: 'admin' } });

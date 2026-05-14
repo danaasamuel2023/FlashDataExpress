@@ -1,9 +1,10 @@
 'use client';
 import { useState, useEffect } from 'react';
-import { Users, ShoppingBag, Wallet, TrendingUp, Loader2, RefreshCw, DollarSign, CalendarDays, Pause, Play, AlertTriangle, Store as StoreIcon, Globe, PackageX, PackageCheck } from 'lucide-react';
+import Link from 'next/link';
+import { Users, ShoppingBag, Wallet, TrendingUp, Loader2, RefreshCw, DollarSign, CalendarDays, Pause, Play, AlertTriangle, Store as StoreIcon, Globe, PackageX, PackageCheck, ArrowRight } from 'lucide-react';
 import toast from 'react-hot-toast';
 import Card from '@/components/ui/Card';
-import { formatCurrency, formatDate, NETWORKS } from '@/lib/constants';
+import { formatCurrency } from '@/lib/constants';
 import api from '@/lib/api';
 
 const NETWORK_LABELS = { YELLO: 'MTN', TELECEL: 'Telecel', AT_PREMIUM: 'AirtelTigo' };
@@ -13,9 +14,6 @@ export default function AdminOverviewPage() {
   const [providerPrices, setProviderPrices] = useState(null);
   const [loading, setLoading] = useState(true);
   const [fetchingPrices, setFetchingPrices] = useState(false);
-  const [dailySales, setDailySales] = useState(null);
-  const [loadingDaily, setLoadingDaily] = useState(false);
-  const [salesSource, setSalesSource] = useState('portal'); // 'portal' | 'store'
   const [ordersPaused, setOrdersPaused] = useState(false);
   const [pauseMessage, setPauseMessage] = useState('');
   const [togglingPause, setTogglingPause] = useState(false);
@@ -26,10 +24,6 @@ export default function AdminOverviewPage() {
     fetchStats();
     fetchOrdersStatus();
   }, []);
-
-  useEffect(() => {
-    fetchDailySales();
-  }, [salesSource]);
 
   const fetchOrdersStatus = async () => {
     try {
@@ -81,18 +75,6 @@ export default function AdminOverviewPage() {
       // silently fail
     } finally {
       setLoading(false);
-    }
-  };
-
-  const fetchDailySales = async () => {
-    setLoadingDaily(true);
-    try {
-      const res = await api.get(`/admin/daily-sales?source=${salesSource}`);
-      setDailySales(res.data.data);
-    } catch {
-      // silently fail
-    } finally {
-      setLoadingDaily(false);
     }
   };
 
@@ -226,87 +208,109 @@ export default function AdminOverviewPage() {
 
       {/* Today's stats — Main Portal */}
       <div>
-        <div className="flex items-center gap-2 mb-3">
-          <Globe className="w-4 h-4 text-primary" />
-          <h2 className="font-bold text-sm text-text-muted uppercase tracking-wider">Today &middot; Main Portal</h2>
+        <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center gap-2">
+            <Globe className="w-4 h-4 text-primary" />
+            <h2 className="font-bold text-sm text-text-muted uppercase tracking-wider">Today &middot; Main Portal</h2>
+          </div>
+          <Link href="/admin/orders?source=portal" className="flex items-center gap-1 text-xs font-bold text-primary hover:text-primary/80 transition-colors">
+            View orders <ArrowRight className="w-3 h-3" />
+          </Link>
         </div>
         <div className="grid grid-cols-3 gap-4">
-          <Card>
-            <div className="flex items-center gap-3">
-              <div className="w-12 h-12 bg-primary/10 rounded-xl flex items-center justify-center">
-                <CalendarDays className="w-6 h-6 text-primary" />
+          <Link href="/admin/orders?source=portal">
+            <Card hover>
+              <div className="flex items-center gap-3">
+                <div className="w-12 h-12 bg-primary/10 rounded-xl flex items-center justify-center">
+                  <CalendarDays className="w-6 h-6 text-primary" />
+                </div>
+                <div>
+                  <p className="text-2xl font-extrabold text-white">{portalToday.orders}</p>
+                  <p className="text-xs text-text-muted">Portal Orders</p>
+                </div>
               </div>
-              <div>
-                <p className="text-2xl font-extrabold text-white">{portalToday.orders}</p>
-                <p className="text-xs text-text-muted">Portal Orders</p>
+            </Card>
+          </Link>
+          <Link href="/admin/orders?source=portal">
+            <Card hover>
+              <div className="flex items-center gap-3">
+                <div className="w-12 h-12 bg-success/10 rounded-xl flex items-center justify-center">
+                  <ShoppingBag className="w-6 h-6 text-success" />
+                </div>
+                <div>
+                  <p className="text-2xl font-extrabold text-white">{formatCurrency(portalToday.revenue)}</p>
+                  <p className="text-xs text-text-muted">Portal Sales</p>
+                </div>
               </div>
-            </div>
-          </Card>
-          <Card>
-            <div className="flex items-center gap-3">
-              <div className="w-12 h-12 bg-success/10 rounded-xl flex items-center justify-center">
-                <ShoppingBag className="w-6 h-6 text-success" />
+            </Card>
+          </Link>
+          <Link href="/admin/orders?source=portal">
+            <Card hover>
+              <div className="flex items-center gap-3">
+                <div className="w-12 h-12 bg-accent/10 rounded-xl flex items-center justify-center">
+                  <DollarSign className="w-6 h-6 text-accent" />
+                </div>
+                <div>
+                  <p className="text-2xl font-extrabold text-white">{formatCurrency(portalToday.profit)}</p>
+                  <p className="text-xs text-text-muted">Portal Profit</p>
+                </div>
               </div>
-              <div>
-                <p className="text-2xl font-extrabold text-white">{formatCurrency(portalToday.revenue)}</p>
-                <p className="text-xs text-text-muted">Portal Sales</p>
-              </div>
-            </div>
-          </Card>
-          <Card>
-            <div className="flex items-center gap-3">
-              <div className="w-12 h-12 bg-accent/10 rounded-xl flex items-center justify-center">
-                <DollarSign className="w-6 h-6 text-accent" />
-              </div>
-              <div>
-                <p className="text-2xl font-extrabold text-white">{formatCurrency(portalToday.profit)}</p>
-                <p className="text-xs text-text-muted">Portal Profit</p>
-              </div>
-            </div>
-          </Card>
+            </Card>
+          </Link>
         </div>
       </div>
 
       {/* Today's stats — Agent Stores */}
       <div>
-        <div className="flex items-center gap-2 mb-3">
-          <StoreIcon className="w-4 h-4 text-blue-500" />
-          <h2 className="font-bold text-sm text-text-muted uppercase tracking-wider">Today &middot; Agent Stores</h2>
+        <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center gap-2">
+            <StoreIcon className="w-4 h-4 text-blue-500" />
+            <h2 className="font-bold text-sm text-text-muted uppercase tracking-wider">Today &middot; Agent Stores</h2>
+          </div>
+          <Link href="/admin/orders?source=store" className="flex items-center gap-1 text-xs font-bold text-blue-500 hover:text-blue-400 transition-colors">
+            View orders <ArrowRight className="w-3 h-3" />
+          </Link>
         </div>
         <div className="grid grid-cols-3 gap-4">
-          <Card>
-            <div className="flex items-center gap-3">
-              <div className="w-12 h-12 bg-blue-500/10 rounded-xl flex items-center justify-center">
-                <CalendarDays className="w-6 h-6 text-blue-500" />
+          <Link href="/admin/orders?source=store">
+            <Card hover>
+              <div className="flex items-center gap-3">
+                <div className="w-12 h-12 bg-blue-500/10 rounded-xl flex items-center justify-center">
+                  <CalendarDays className="w-6 h-6 text-blue-500" />
+                </div>
+                <div>
+                  <p className="text-2xl font-extrabold text-white">{storeToday.orders}</p>
+                  <p className="text-xs text-text-muted">Store Orders</p>
+                </div>
               </div>
-              <div>
-                <p className="text-2xl font-extrabold text-white">{storeToday.orders}</p>
-                <p className="text-xs text-text-muted">Store Orders</p>
+            </Card>
+          </Link>
+          <Link href="/admin/orders?source=store">
+            <Card hover>
+              <div className="flex items-center gap-3">
+                <div className="w-12 h-12 bg-success/10 rounded-xl flex items-center justify-center">
+                  <ShoppingBag className="w-6 h-6 text-success" />
+                </div>
+                <div>
+                  <p className="text-2xl font-extrabold text-white">{formatCurrency(storeToday.revenue)}</p>
+                  <p className="text-xs text-text-muted">Store Sales</p>
+                </div>
               </div>
-            </div>
-          </Card>
-          <Card>
-            <div className="flex items-center gap-3">
-              <div className="w-12 h-12 bg-success/10 rounded-xl flex items-center justify-center">
-                <ShoppingBag className="w-6 h-6 text-success" />
+            </Card>
+          </Link>
+          <Link href="/admin/orders?source=store">
+            <Card hover>
+              <div className="flex items-center gap-3">
+                <div className="w-12 h-12 bg-accent/10 rounded-xl flex items-center justify-center">
+                  <DollarSign className="w-6 h-6 text-accent" />
+                </div>
+                <div>
+                  <p className="text-2xl font-extrabold text-white">{formatCurrency(storeToday.profit)}</p>
+                  <p className="text-xs text-text-muted">Platform Margin</p>
+                </div>
               </div>
-              <div>
-                <p className="text-2xl font-extrabold text-white">{formatCurrency(storeToday.revenue)}</p>
-                <p className="text-xs text-text-muted">Store Sales</p>
-              </div>
-            </div>
-          </Card>
-          <Card>
-            <div className="flex items-center gap-3">
-              <div className="w-12 h-12 bg-accent/10 rounded-xl flex items-center justify-center">
-                <DollarSign className="w-6 h-6 text-accent" />
-              </div>
-              <div>
-                <p className="text-2xl font-extrabold text-white">{formatCurrency(storeToday.profit)}</p>
-                <p className="text-xs text-text-muted">Platform Margin</p>
-              </div>
-            </div>
-          </Card>
+            </Card>
+          </Link>
         </div>
       </div>
 
@@ -412,86 +416,6 @@ export default function AdminOverviewPage() {
           </div>
         </Card>
       )}
-
-      {/* Today's Sales History */}
-      <Card>
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
-          <div>
-            <h2 className="font-bold text-white">Today&apos;s Sales History</h2>
-            {dailySales && (
-              <p className="text-xs text-text-muted mt-1">
-                {dailySales.count} orders &middot; Revenue: {formatCurrency(dailySales.totalRevenue)} &middot; Profit: {formatCurrency(dailySales.totalProfit)}
-              </p>
-            )}
-          </div>
-          <div className="flex items-center gap-2">
-            <div className="flex bg-surface-light rounded-lg p-0.5">
-              <button
-                onClick={() => setSalesSource('portal')}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-bold transition-colors ${
-                  salesSource === 'portal' ? 'bg-primary text-white' : 'text-text-muted hover:text-white'
-                }`}
-              >
-                <Globe className="w-3.5 h-3.5" /> Portal
-              </button>
-              <button
-                onClick={() => setSalesSource('store')}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-bold transition-colors ${
-                  salesSource === 'store' ? 'bg-blue-500 text-white' : 'text-text-muted hover:text-white'
-                }`}
-              >
-                <StoreIcon className="w-3.5 h-3.5" /> Stores
-              </button>
-            </div>
-            <button
-              onClick={fetchDailySales}
-              disabled={loadingDaily}
-              className="flex items-center gap-1.5 text-xs font-bold text-primary hover:text-primary/80 transition-colors disabled:opacity-50"
-            >
-              <RefreshCw className={`w-3.5 h-3.5 ${loadingDaily ? 'animate-spin' : ''}`} />
-              Refresh
-            </button>
-          </div>
-        </div>
-        {loadingDaily ? (
-          <div className="flex justify-center py-8"><Loader2 className="w-5 h-5 text-primary animate-spin" /></div>
-        ) : !dailySales?.sales?.length ? (
-          <p className="text-text-muted text-sm text-center py-8">No sales today yet.</p>
-        ) : (
-          <div className="space-y-3 max-h-96 overflow-y-auto">
-            {dailySales.sales.map((order, i) => {
-              const profit = (order.price || 0) - (order.costPrice || 0);
-              return (
-                <div key={i} className="flex items-center justify-between py-2 border-b border-white/[0.04] last:border-0">
-                  <div>
-                    <p className="font-semibold text-sm text-white">{order.phoneNumber}</p>
-                    <p className="text-xs text-text-muted">
-                      {order.network} &middot; {order.capacity}GB
-                      {order.purchaseSource === 'guest' && <span className="ml-1 text-primary">(Guest)</span>}
-                      {order.purchaseSource === 'store' && <span className="ml-1 text-accent">(Store)</span>}
-                    </p>
-                    <p className="text-[10px] text-text-muted mt-0.5">{formatDate(order.createdAt)} &middot; {order.reference}</p>
-                  </div>
-                  <div className="text-right">
-                    <p className="font-bold text-sm text-white">{formatCurrency(order.price)}</p>
-                    <p className={`text-[10px] font-semibold ${profit > 0 ? 'text-success' : 'text-text-muted'}`}>
-                      Profit: {formatCurrency(profit)}
-                    </p>
-                    <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${
-                      order.status === 'completed' ? 'bg-success/10 text-success' :
-                      order.status === 'processing' ? 'bg-blue-500/10 text-blue-500' :
-                      order.status === 'pending' ? 'bg-accent/10 text-accent' :
-                      'bg-error/10 text-error'
-                    }`}>
-                      {order.status}
-                    </span>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        )}
-      </Card>
 
       {/* Recent activity */}
       {stats?.recentOrders?.length > 0 && (

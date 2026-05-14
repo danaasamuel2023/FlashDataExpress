@@ -126,6 +126,7 @@ router.get('/invite-info/:code', async (req, res) => {
         status: 'success',
         data: {
           storeName: store.storeName,
+          storeSlug: store.storeSlug,
           storeDescription: store.description,
           parentAgentName: parentAgent?.name,
           inviteCode: code,
@@ -148,6 +149,7 @@ router.get('/invite-info/:code', async (req, res) => {
       status: 'success',
       data: {
         storeName: subAgent.storeId?.storeName,
+        storeSlug: subAgent.storeId?.storeSlug,
         storeDescription: subAgent.storeId?.description,
         parentAgentName: parentAgent?.name,
         inviteCode: subAgent.inviteCode,
@@ -287,6 +289,7 @@ router.post('/register', [
           storeName: subAgent.storeName,
           storeSlug: subAgent.storeSlug,
           parentStoreName: parentStore.storeName,
+          parentStoreSlug: parentStore.storeSlug,
         },
       },
     });
@@ -307,18 +310,31 @@ router.post('/register', [
   }
 });
 
-// POST /api/subagent/login — Sub-agent login
+// POST /api/subagent/login — Sub-agent login.
+// Requires `parentStoreSlug` so a sub-agent can only authenticate through
+// the specific parent agent's store URL that owns their account. Logging
+// in via another agent's store link is rejected — this prevents one
+// sub-agent from operating under multiple parent agents' portals.
 router.post('/login', [
   body('email').isEmail().normalizeEmail(),
-  body('password').notEmpty()
+  body('password').notEmpty(),
+  body('parentStoreSlug').trim().notEmpty().withMessage('Parent store is required')
 ], async (req, res) => {
   try {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
-      return res.status(400).json({ status: 'error', message: 'Valid email and password required' });
+      return res.status(400).json({ status: 'error', message: errors.array()[0].msg || 'Valid email, password and parent store required' });
     }
 
-    const { email, password } = req.body;
+    const { email, password, parentStoreSlug } = req.body;
+
+    // Resolve the parent store first so we can give a clear error before
+    // any credential check.
+    const parentStore = await Store.findOne({ storeSlug: String(parentStoreSlug).toLowerCase().trim() });
+    if (!parentStore) {
+      return res.status(404).json({ status: 'error', message: 'Parent agent store not found. Use the login link your agent shared with you.' });
+    }
+
     const user = await User.findOne({ email }).select('+password');
     if (!user) {
       return res.status(401).json({ status: 'error', message: 'Invalid email or password' });
@@ -337,6 +353,14 @@ router.post('/login', [
       .populate('storeId', 'storeName storeSlug');
     if (!subAgent) {
       return res.status(403).json({ status: 'error', message: 'No sub-agent account found for this email' });
+    }
+
+    // Enforce store binding: the sub-agent's parent agent must own this store.
+    if (String(subAgent.storeId?._id) !== String(parentStore._id)) {
+      return res.status(403).json({
+        status: 'error',
+        message: 'This login link does not belong to your parent agent. Please use the link your own agent shared with you.',
+      });
     }
 
     user.lastLogin = new Date();
@@ -359,6 +383,7 @@ router.post('/login', [
           storeName: subAgent.storeName,
           storeSlug: subAgent.storeSlug,
           parentStoreName: subAgent.storeId?.storeName,
+          parentStoreSlug: subAgent.storeId?.storeSlug,
           totalEarnings: subAgent.totalEarnings,
           totalSales: subAgent.totalSales,
           pendingBalance: subAgent.pendingBalance,
