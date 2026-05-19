@@ -2,12 +2,11 @@ const router = require('express').Router();
 const Store = require('../models/Store');
 const StoreProduct = require('../models/StoreProduct');
 const User = require('../models/User');
-const DataPurchase = require('../models/DataPurchase');
 const Settings = require('../models/Settings');
 const paystackService = require('../services/paystackService');
-const datamartService = require('../services/datamartService');
 const SubAgent = require('../models/SubAgent');
 const { generateReference } = require('../utils/helpers');
+const { processStorePurchase } = require('../utils/storePurchaseProcessor');
 const ordersPaused = require('../middleware/ordersPaused');
 
 // GET /api/shop/:slug
@@ -126,113 +125,21 @@ router.get('/:slug/verify-payment', async (req, res) => {
       return res.status(400).json({ status: 'error', message: 'Payment not verified' });
     }
 
-    const meta = verification.metadata;
-    const store = await Store.findById(meta.storeId);
-    if (!store) {
-      return res.status(404).json({ status: 'error', message: 'Store not found' });
-    }
-
-    const existing = await DataPurchase.findOne({ reference });
-    if (existing) {
-      return res.json({ status: 'success', message: 'Already processed', data: existing });
-    }
-
-    const verifyProduct = await StoreProduct.findOne({
-      storeId: store._id,
-      network: meta.network,
-      capacity: meta.capacity,
-      isActive: true,
+    const result = await processStorePurchase({
+      reference,
+      metadata: verification.metadata,
     });
-    const storeSettings = await Settings.getSettings();
-    const platformAgentPrices = storeSettings?.pricing?.agentPrices || {};
-    const platformSellingPrices = storeSettings?.pricing?.sellingPrices || {};
-    const verifiedSellingPrice = verifyProduct?.sellingPrice || meta.sellingPrice;
-    // Use agent-specific prices if set, otherwise fall back to regular selling prices
-    const verifiedBasePrice = (platformAgentPrices[meta.network] || {})[String(meta.capacity)]
-      || (platformSellingPrices[meta.network] || {})[String(meta.capacity)]
-      || verifyProduct?.basePrice || 0;
-    let agentProfit = verifiedSellingPrice - verifiedBasePrice;
 
-    let subAgentProfit = 0;
-    let subAgentRef = meta.subAgentId || null;
-    if (subAgentRef) {
-      const subAgent = await SubAgent.findById(subAgentRef);
-      if (subAgent && subAgent.isActive) {
-        subAgentProfit = Math.round((agentProfit * subAgent.commissionPercent / 100) * 100) / 100;
-        agentProfit = Math.round((agentProfit - subAgentProfit) * 100) / 100;
-      } else {
-        subAgentRef = null;
-      }
+    if (!result.ok) {
+      const code = result.reason === 'store_not_found' ? 404 : 400;
+      return res.status(code).json({ status: 'error', message: result.reason });
     }
 
-    let purchase;
-    try {
-      purchase = await DataPurchase.create({
-        userId: store.agentId,
-        phoneNumber: meta.phoneNumber,
-        network: meta.network,
-        capacity: meta.capacity,
-        price: verifiedSellingPrice,
-        costPrice: verifiedBasePrice,
-        reference,
-        provider: 'datamart',
-        status: 'pending',
-        purchaseSource: 'store',
-        storeDetails: {
-          storeId: store._id,
-          storeName: store.storeName,
-          agentId: store.agentId,
-          agentProfit,
-          sellingPrice: verifiedSellingPrice,
-          subAgentId: subAgentRef || undefined,
-          subAgentProfit: subAgentProfit || undefined,
-        },
-      });
-    } catch (err) {
-      if (err.code === 11000) {
-        const existing = await DataPurchase.findOne({ reference });
-        return res.json({ status: 'success', message: 'Already processed', data: existing });
-      }
-      throw err;
+    if (result.alreadyProcessed) {
+      return res.json({ status: 'success', message: 'Already processed', data: result.purchase });
     }
 
-    // Credit profits immediately (payment already verified)
-    if (agentProfit > 0) {
-      await Store.findOneAndUpdate(
-        { _id: store._id },
-        { $inc: { totalEarnings: agentProfit, pendingBalance: agentProfit, totalSales: 1 } }
-      );
-    }
-    if (subAgentRef && subAgentProfit > 0) {
-      await SubAgent.findOneAndUpdate(
-        { _id: subAgentRef },
-        { $inc: { totalEarnings: subAgentProfit, pendingBalance: subAgentProfit, totalSales: 1 } }
-      );
-    }
-    purchase.storeDetails.profitCredited = true;
-    await purchase.save();
-
-    try {
-      const result = await datamartService.purchaseData({
-        network: meta.network,
-        capacity: meta.capacity,
-        phoneNumber: meta.phoneNumber,
-      });
-      purchase.datamartReference = result?.orderReference || result?.reference;
-      purchase.datamartOrderId = result?.purchaseId || result?.orderId;
-      const dmStatus = (result?.orderStatus || result?.status || '').toLowerCase();
-      if (dmStatus === 'completed' || dmStatus === 'success' || dmStatus === 'delivered') {
-        purchase.status = 'completed';
-      }
-      await purchase.save();
-    } catch (err) {
-      // Auto-refund disabled — admin must refund manually from /admin/refunds.
-      purchase.status = 'failed';
-      purchase.failureReason = err.message;
-      await purchase.save();
-    }
-
-    res.json({ status: 'success', data: purchase });
+    res.json({ status: 'success', data: result.purchase });
   } catch (err) {
     console.error('Store public error:', err.message);
     res.status(500).json({ status: 'error', message: 'Something went wrong. Please try again.' });

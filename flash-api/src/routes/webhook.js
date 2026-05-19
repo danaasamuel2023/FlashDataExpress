@@ -9,6 +9,7 @@ const Settings = require('../models/Settings');
 const paystackService = require('../services/paystackService');
 const { generateReference } = require('../utils/helpers');
 const { refundFailedPurchase } = require('../utils/refund');
+const { processStorePurchase, processSubShopPurchase } = require('../utils/storePurchaseProcessor');
 
 // Verify DataMart webhook signature
 async function verifyDatamartSignature(req, res, next) {
@@ -380,9 +381,31 @@ router.post('/paystack', verifyPaystackSignature, async (req, res) => {
       return res.json({ status: 'success', message: 'Store activation payment received' });
     }
 
-    // Store purchases are handled by verify-payment endpoint — just acknowledge the webhook
+    // Store purchase — webhook is the source of truth so the order still
+    // completes when the customer never returns to the verify-payment page.
     if (metadata.type === 'store_purchase') {
-      return res.json({ status: 'success', message: 'Store purchase acknowledged' });
+      try {
+        const result = await processStorePurchase({ reference, metadata });
+        if (!result.ok) {
+          console.error('Store purchase webhook skipped:', result.reason, 'ref:', reference);
+        }
+      } catch (err) {
+        console.error('Store purchase webhook error:', err.message, 'ref:', reference);
+      }
+      return res.json({ status: 'success', message: 'Store purchase processed' });
+    }
+
+    // Sub-agent store purchase — same rationale as store_purchase above.
+    if (metadata.type === 'subagent_store_purchase') {
+      try {
+        const result = await processSubShopPurchase({ reference, metadata });
+        if (!result.ok) {
+          console.error('SubShop purchase webhook skipped:', result.reason, 'ref:', reference);
+        }
+      } catch (err) {
+        console.error('SubShop purchase webhook error:', err.message, 'ref:', reference);
+      }
+      return res.json({ status: 'success', message: 'SubShop purchase processed' });
     }
 
     res.json({ status: 'success', message: 'Event processed' });
