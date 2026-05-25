@@ -4,6 +4,7 @@ import { Package, Loader2, Search, RefreshCw, CheckCircle2, Clock, AlertCircle, 
 import Card from '@/components/ui/Card';
 import Input from '@/components/ui/Input';
 import NetworkIcon from '@/components/shared/NetworkIcon';
+import DeliveryTracker from '@/components/shared/DeliveryTracker';
 import { formatCurrency, formatDate, NETWORKS } from '@/lib/constants';
 import api from '@/lib/api';
 
@@ -73,6 +74,9 @@ export default function OrdersPage() {
           <RefreshCw className={`w-4.5 h-4.5 ${refreshing ? 'animate-spin' : ''}`} />
         </button>
       </div>
+
+      {/* Live delivery pipeline status */}
+      <DeliveryTracker />
 
       {/* Status summary */}
       {!loading && orders.length > 0 && (

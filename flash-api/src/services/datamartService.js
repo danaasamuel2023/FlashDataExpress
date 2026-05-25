@@ -74,6 +74,16 @@ class DataMartService {
     }
     return data;
   }
+
+  // Live state of DataMart's delivery scanner pipeline. We authenticate with
+  // our single reseller key, so the upstream `yourOrders` field reflects ALL
+  // FlashData orders in the batch (other customers included) — the caller is
+  // responsible for stripping it before returning to an end user.
+  async getDeliveryTracker() {
+    const client = await this.getClient();
+    const res = await client.get('/api/developer/delivery-tracker');
+    return res.data?.data;
+  }
 }
 
 module.exports = new DataMartService();

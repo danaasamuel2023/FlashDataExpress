@@ -491,6 +491,60 @@ router.get('/history', auth, async (req, res) => {
   }
 });
 
+// GET /api/purchase/delivery-tracker
+// Surfaces DataMart's delivery-scanner pipeline state to the user, paired with
+// a count of THIS user's own in-flight orders. We deliberately drop the
+// upstream `yourOrders` payload — under our shared reseller key it lists every
+// FlashData customer's order in the batch, which would leak others' data.
+router.get('/delivery-tracker', auth, async (req, res) => {
+  try {
+    const yourPending = await DataPurchase.countDocuments({
+      userId: req.user._id,
+      status: { $in: ['pending', 'processing'] },
+    });
+
+    let tracker = null;
+    try {
+      tracker = await datamartService.getDeliveryTracker();
+    } catch (err) {
+      // Degrade gracefully — the widget should still render the user's own
+      // pending count even when the upstream tracker is unreachable.
+      return res.json({
+        status: 'success',
+        data: {
+          scanner: { state: 'unknown', active: false, waiting: false, waitSeconds: 0, pendingBatches: 0 },
+          message: 'Live delivery status is temporarily unavailable.',
+          lastDelivered: null,
+          checkingNow: null,
+          yourPending,
+          updatedAt: new Date().toISOString(),
+        },
+      });
+    }
+
+    const ld = tracker?.lastDelivered;
+    res.json({
+      status: 'success',
+      data: {
+        scanner: tracker?.scanner || { state: 'unknown', active: false, waiting: false, waitSeconds: 0, pendingBatches: 0 },
+        message: tracker?.message || null,
+        // Keep only non-PII pipeline timing, not the upstream tracking IDs.
+        lastDelivered: ld?.deliveredAt
+          ? { deliveredAt: ld.deliveredAt, placedAt: ld.placedAt || null }
+          : null,
+        checkingNow: tracker?.checkingNow?.batchNumber
+          ? { active: true }
+          : null,
+        yourPending,
+        updatedAt: new Date().toISOString(),
+      },
+    });
+  } catch (err) {
+    console.error('Delivery tracker error:', err.message);
+    res.status(500).json({ status: 'error', message: 'Something went wrong. Please try again.' });
+  }
+});
+
 // GET /api/purchase/status/:ref
 router.get('/status/:ref', auth, async (req, res) => {
   try {
