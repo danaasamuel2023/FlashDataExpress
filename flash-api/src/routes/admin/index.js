@@ -891,6 +891,7 @@ const SECRET_FIELDS = [
   'paystack.secretKey',
   'paystack.transferKey',
   'datamart.apiKey',
+  'datamart.webhookSecret',
   'sms.apiKey',
   'ghust.apiKey',
   'ghust.webhookSecret',
@@ -948,9 +949,10 @@ router.put('/settings', async (req, res) => {
     }
 
     if (datamart) {
-      const { apiKey, ...rest } = datamart;
+      const { apiKey, webhookSecret, ...rest } = datamart;
       for (const [k, v] of Object.entries(rest)) updates[`datamart.${k}`] = v;
       applySecretUpdate(updates, 'datamart', 'apiKey', apiKey);
+      applySecretUpdate(updates, 'datamart', 'webhookSecret', webhookSecret);
     }
 
     if (sms) {

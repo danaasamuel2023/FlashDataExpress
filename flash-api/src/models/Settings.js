@@ -8,6 +8,10 @@ const SettingsSchema = new mongoose.Schema({
   datamart: {
     apiUrl: { type: String, default: 'https://api.datamartgh.shop' },
     apiKey: { type: String, default: '' },
+    // Secret DataMart returns from POST /webhook/configure. Used to verify the
+    // HMAC-SHA256 signature (X-DataMart-Signature) on its order webhooks.
+    // Separate from apiKey. Falls back to env DATAMART_WEBHOOK_SECRET.
+    webhookSecret: { type: String, default: '' },
     isConnected: { type: Boolean, default: false },
     lastSyncedAt: Date
   },

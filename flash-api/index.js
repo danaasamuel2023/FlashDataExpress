@@ -51,8 +51,13 @@ app.use('/api/auth/register', authLimiter);
 app.use('/api/auth/forgot-password', authLimiter);
 app.use('/api/auth/reset-password', authLimiter);
 
-// Body parsing
-app.use(express.json({ limit: '10mb' }));
+// Body parsing. Keep the raw bytes around so webhook handlers can verify
+// HMAC signatures against the exact payload that was signed (DataMart signs
+// JSON.stringify(payload); re-serializing a parsed body can differ).
+app.use(express.json({
+  limit: '10mb',
+  verify: (req, res, buf) => { req.rawBody = buf; },
+}));
 app.use(express.urlencoded({ extended: true }));
 
 // Health check

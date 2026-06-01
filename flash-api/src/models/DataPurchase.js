@@ -39,6 +39,11 @@ const DataPurchaseSchema = new mongoose.Schema({
   },
   datamartReference: String,
   datamartOrderId: String,
+  // Upstream tracking id DataMart sends on its order webhook
+  // (exportTracking.portalOrderId || apiOrderId) — shown to the customer.
+  trackingId: String,
+  // Human-readable delivery line, e.g. "Submitted to the Yello server on …".
+  deliveryInfo: String,
   ghustReference: String,
   status: {
     type: String,
@@ -67,6 +72,7 @@ const DataPurchaseSchema = new mongoose.Schema({
   balanceBefore: Number,
   balanceAfter: Number,
   failureReason: String,
+  completedAt: Date,
   refundedAt: Date
 }, {
   timestamps: true

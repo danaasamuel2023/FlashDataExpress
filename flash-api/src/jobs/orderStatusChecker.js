@@ -29,9 +29,14 @@ async function checkPendingOrders() {
 
         if (!result) continue;
 
+        // Backfill tracking/delivery info the same fields the webhook carries.
+        if (result.trackingId && order.trackingId !== result.trackingId) order.trackingId = result.trackingId;
+        if (result.deliveryInfo && order.deliveryInfo !== result.deliveryInfo) order.deliveryInfo = result.deliveryInfo;
+
         const newStatus = result.status?.toLowerCase();
         if (newStatus === 'completed' || newStatus === 'success' || newStatus === 'delivered') {
           order.status = 'completed';
+          if (!order.completedAt) order.completedAt = result.completedAt ? new Date(result.completedAt) : new Date();
           await order.save();
 
           // Credit agent & sub-agent for store purchases (if not already credited)
@@ -72,6 +77,9 @@ async function checkPendingOrders() {
           // Mark failed only — admin issues the refund manually from /admin/refunds.
           order.status = 'failed';
           order.failureReason = result.message || 'Order failed at provider';
+          await order.save();
+        } else if (order.isModified()) {
+          // Still in flight but tracking/delivery info changed — persist it.
           await order.save();
         }
       } catch (err) {

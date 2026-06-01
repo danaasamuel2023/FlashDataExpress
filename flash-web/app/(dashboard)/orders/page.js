@@ -183,6 +183,16 @@ export default function OrdersPage() {
                     <p className="text-xs text-text-muted mt-0.5">
                       {formatDate(order.createdAt)} &middot; {order.reference}
                     </p>
+                    {order.trackingId && (
+                      <p className="text-xs text-text-muted mt-0.5">
+                        Tracking ID: <span className="text-text font-mono">{order.trackingId}</span>
+                      </p>
+                    )}
+                    {order.deliveryInfo && (
+                      <p className="text-xs text-success/80 mt-0.5">
+                        {order.deliveryInfo}
+                      </p>
+                    )}
                     {order.status === 'failed' && order.failureReason && (
                       <p className="text-xs text-error/80 mt-1">
                         {order.failureReason}

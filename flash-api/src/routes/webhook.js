@@ -11,39 +11,72 @@ const { generateReference } = require('../utils/helpers');
 const { refundFailedPurchase } = require('../utils/refund');
 const { processStorePurchase, processSubShopPurchase } = require('../utils/storePurchaseProcessor');
 
-// Verify DataMart webhook signature
+// Verify DataMart webhook signature.
+// DataMart's sendOrderWebhook signs the body with
+//   HMAC-SHA256(JSON.stringify(payload), webhookSecret)
+// and sends it in the `X-DataMart-Signature` header. The webhook secret is
+// the value returned by DataMart's POST /webhook/configure (NOT the API key).
 async function verifyDatamartSignature(req, res, next) {
   try {
     const settings = await Settings.getSettings();
-    const secret = settings?.datamart?.apiKey;
+    const webhookSecret = settings?.datamart?.webhookSecret || process.env.DATAMART_WEBHOOK_SECRET || '';
+    const apiKey = settings?.datamart?.apiKey || '';
 
-    if (!secret) {
-      return res.status(500).json({ status: 'error', message: 'Webhook verification not configured' });
-    }
+    const sigHeader = req.headers['x-datamart-signature'] || req.headers['x-webhook-signature'];
 
-    const signature = req.headers['x-api-key'] || req.headers['x-webhook-signature'];
-    if (!signature) {
-      return res.status(401).json({ status: 'error', message: 'Missing webhook signature' });
-    }
-
-    if (signature !== secret) {
+    // Preferred path: HMAC-SHA256 over the exact bytes received.
+    if (sigHeader && webhookSecret) {
+      const raw = (req.rawBody && req.rawBody.length)
+        ? req.rawBody
+        : Buffer.from(JSON.stringify(req.body || {}), 'utf8');
+      const expected = crypto.createHmac('sha256', webhookSecret).update(raw).digest('hex');
+      const a = Buffer.from(String(sigHeader).trim(), 'utf8');
+      const b = Buffer.from(expected, 'utf8');
+      if (a.length === b.length && crypto.timingSafeEqual(a, b)) return next();
       return res.status(401).json({ status: 'error', message: 'Invalid webhook signature' });
     }
 
-    next();
+    // Fallback: a plain shared-secret header (manual tests / simple senders).
+    const plain = req.headers['x-api-key'];
+    if (plain && ((webhookSecret && plain === webhookSecret) || (apiKey && plain === apiKey))) {
+      return next();
+    }
+
+    return res.status(401).json({ status: 'error', message: 'Missing or invalid webhook signature' });
   } catch (err) {
     res.status(500).json({ status: 'error', message: 'Webhook verification failed' });
   }
 }
 
-// POST /api/webhook/datamart - DataMart order status webhook
+// POST /api/webhook/datamart - DataMart order status webhook.
+// Payload shape: { event, timestamp, data: { orderReference, transactionId,
+//   status, trackingId, deliveryInfo, completedAt, ... } }. We also tolerate a
+// flat body (older/manual senders) by falling back to top-level fields.
 router.post('/datamart', verifyDatamartSignature, async (req, res) => {
   try {
-    const { reference, orderReference, status, message } = req.body;
+    const body = req.body || {};
+    const event = body.event;
+    const data = body.data || body; // DataMart nests under data; fall back to flat
 
-    const dmRef = reference || orderReference;
-    if (!dmRef || !status) {
-      return res.status(400).json({ status: 'error', message: 'Missing reference or status' });
+    const dmRef = data.orderReference || data.reference || body.orderReference || body.reference;
+    const message = data.message || body.message;
+    const trackingId = data.trackingId || null;
+    const deliveryInfo = data.deliveryInfo || null;
+    const dmOrderId = data.orderId || null;
+    const completedAt = data.completedAt || null;
+
+    // Effective status: explicit status field, else derive from the event name.
+    let newStatus = String(data.status || body.status || '').toLowerCase();
+    if (!newStatus && event) {
+      if (event === 'order.completed') newStatus = 'completed';
+      else if (event === 'order.failed') newStatus = 'failed';
+      else if (event === 'order.refunded') newStatus = 'refunded';
+      else if (event === 'order.processing') newStatus = 'processing';
+      else if (event === 'order.created') newStatus = 'pending';
+    }
+
+    if (!dmRef) {
+      return res.status(400).json({ status: 'error', message: 'Missing order reference' });
     }
 
     // Find the purchase by datamart reference
@@ -58,15 +91,26 @@ router.post('/datamart', verifyDatamartSignature, async (req, res) => {
       return res.status(404).json({ status: 'error', message: 'Order not found' });
     }
 
-    // Already in a final state
-    if (['completed', 'failed', 'refunded'].includes(purchase.status)) {
-      return res.json({ status: 'success', message: 'Order already in final state' });
+    // Backfill tracking/delivery info on EVERY webhook — the tracking id usually
+    // arrives with the completed event, and may land after the status poller has
+    // already flipped the order to a final state.
+    if (trackingId && purchase.trackingId !== trackingId) purchase.trackingId = trackingId;
+    if (deliveryInfo && purchase.deliveryInfo !== deliveryInfo) purchase.deliveryInfo = deliveryInfo;
+    if (dmOrderId && !purchase.datamartOrderId) purchase.datamartOrderId = dmOrderId;
+    if (completedAt && !purchase.completedAt) {
+      const d = new Date(completedAt);
+      if (!isNaN(d.getTime())) purchase.completedAt = d;
     }
 
-    const newStatus = status.toLowerCase();
+    // Already in a final state — persist any new tracking info and stop.
+    if (['completed', 'failed', 'refunded'].includes(purchase.status)) {
+      await purchase.save();
+      return res.json({ status: 'success', message: 'Tracking info updated; order already final' });
+    }
 
     if (newStatus === 'completed' || newStatus === 'success' || newStatus === 'delivered') {
       purchase.status = 'completed';
+      if (!purchase.completedAt) purchase.completedAt = new Date();
       await purchase.save();
 
       // Credit agent/subagent earnings if not already credited at purchase time
