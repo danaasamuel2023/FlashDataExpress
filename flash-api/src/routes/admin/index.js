@@ -970,17 +970,15 @@ router.put('/pricing', async (req, res) => {
       agentClamped = floorAtBase(agentPrices);
       updates['pricing.agentPrices'] = agentClamped;
     }
-    if (subAgentPrices) {
-      const sub = floorAtBase(subAgentPrices);
-      // Keep the ladder: sub-agent cost basis is never above the agent price.
-      const agentRef = agentClamped || cur.agentPrices || {};
-      for (const net of Object.keys(sub)) {
-        for (const cap of Object.keys(sub[net] || {})) {
-          const a = (agentRef[net] || {})[cap];
-          if (a != null && Number(sub[net][cap]) > a) sub[net][cap] = a;
-        }
-      }
-      updates['pricing.subAgentPrices'] = sub;
+
+    // Sub-shop cost basis ALWAYS mirrors the agent price. An agent must pay the
+    // same platform cost whether they sell directly or through a sub-agent —
+    // otherwise the platform earns less on sub-shop sales (subAgentPrices below
+    // agentPrices was leaking margin). Any incoming subAgentPrices is ignored in
+    // favour of the agent tier. Recomputed whenever agent OR sub prices change.
+    if (agentPrices || subAgentPrices) {
+      const effectiveAgent = agentClamped || cur.agentPrices || {};
+      updates['pricing.subAgentPrices'] = JSON.parse(JSON.stringify(effectiveAgent));
     }
 
     await Settings.findOneAndUpdate(
@@ -988,7 +986,7 @@ router.put('/pricing', async (req, res) => {
       { $set: updates },
       { upsert: true }
     );
-    res.json({ status: 'success', message: 'Pricing updated (clamped so no tier is below the platform cost, and sub-agent ≤ agent)' });
+    res.json({ status: 'success', message: 'Pricing updated (no tier below platform cost; sub-agent cost basis = agent price)' });
   } catch (err) {
     console.error('Admin error:', err.message);
     res.status(500).json({ status: 'error', message: 'Something went wrong. Please try again.' });
@@ -1028,28 +1026,22 @@ router.post('/pricing/sync', async (req, res) => {
         if (!agentPrices[network][capacity]) {
           agentPrices[network][capacity] = Math.round(basePrice * 1.03 * 100) / 100;
         }
-        if (!subAgentPrices[network][capacity]) {
-          // Sub-agent cost basis must stay <= the agent price, so default it to
-          // the SAME markup as the agent tier (never the old 1.04, which sat
-          // ABOVE the agent tier and silently inverted the ladder).
-          subAgentPrices[network][capacity] = Math.round(basePrice * 1.03 * 100) / 100;
-        }
+        // subAgentPrices is always mirrored from the agent tier below — no
+        // separate default needed.
       }
     }
 
     // Self-heal pass over EVERY entry (not just newly-added ones): no tier may
-    // sit below the platform/DataMart cost, and the sub-agent cost basis is
-    // capped at the agent price. Makes a sync idempotently fix a broken ladder.
+    // sit below the platform/DataMart cost, and the sub-agent cost basis ALWAYS
+    // equals the agent price (so the platform never earns less on sub-shop
+    // sales). Makes a sync idempotently repair pricing.
     for (const network of Object.keys(basePrices)) {
       for (const capacity of Object.keys(basePrices[network])) {
         const b = basePrices[network][capacity];
         if (b == null) continue;
         if (agentPrices[network][capacity] < b) agentPrices[network][capacity] = b;
         if (sellingPrices[network][capacity] < b) sellingPrices[network][capacity] = b;
-        let sa = subAgentPrices[network][capacity];
-        if (sa < b) sa = b;
-        if (sa > agentPrices[network][capacity]) sa = agentPrices[network][capacity];
-        subAgentPrices[network][capacity] = sa;
+        subAgentPrices[network][capacity] = agentPrices[network][capacity];
       }
     }
 
