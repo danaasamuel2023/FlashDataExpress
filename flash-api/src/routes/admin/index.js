@@ -24,12 +24,6 @@ router.use(auth, adminAuth);
 const PORTAL_SOURCES = ['direct', 'guest'];
 const STORE_SOURCES = ['store'];
 
-// Minimum margin (GHS) the platform keeps over the DataMart cost on every
-// bundle. agentPrices — and therefore the sub-shop cost basis, which mirrors
-// it — is never allowed below basePrice + this, so no SKU earns the platform
-// next-to-nothing. Retail (sellingPrices) is in turn kept at/above agentPrices.
-const MIN_PLATFORM_FEE = 0.5;
-
 // GET /api/admin/dashboard
 router.get('/dashboard', async (req, res) => {
   try {
@@ -970,41 +964,18 @@ router.put('/pricing', async (req, res) => {
     const updates = {};
     if (basePrices) updates['pricing.basePrices'] = basePrices;
 
-    // Agent price is floored at base + MIN_PLATFORM_FEE so the platform always
-    // keeps a minimum margin on every bundle.
+    // Agent price is exactly what the admin enters — only floored at the
+    // DataMart cost so we never sell below what we pay. No imposed markup.
     let agentClamped = null;
+    if (sellingPrices) updates['pricing.sellingPrices'] = floorAtBase(sellingPrices);
     if (agentPrices) {
-      agentClamped = JSON.parse(JSON.stringify(agentPrices));
-      for (const net of Object.keys(agentClamped)) {
-        for (const cap of Object.keys(agentClamped[net] || {})) {
-          const b = (base[net] || {})[cap];
-          if (b != null) {
-            const floor = Math.round((b + MIN_PLATFORM_FEE) * 100) / 100;
-            if (Number(agentClamped[net][cap]) < floor) agentClamped[net][cap] = floor;
-          }
-        }
-      }
+      agentClamped = floorAtBase(agentPrices);
       updates['pricing.agentPrices'] = agentClamped;
     }
 
-    // Retail (user) price is floored at base, then raised to at least the agent
-    // price so retail always covers the agent's cost.
-    if (sellingPrices) {
-      const sell = floorAtBase(sellingPrices);
-      const agentRef = agentClamped || cur.agentPrices || {};
-      for (const net of Object.keys(sell)) {
-        for (const cap of Object.keys(sell[net] || {})) {
-          const a = (agentRef[net] || {})[cap];
-          if (a != null && Number(sell[net][cap]) < a) sell[net][cap] = a;
-        }
-      }
-      updates['pricing.sellingPrices'] = sell;
-    }
-
-    // Sub-shop cost basis ALWAYS mirrors the agent price. An agent must pay the
-    // same platform cost whether they sell directly or through a sub-agent —
-    // otherwise the platform earns less on sub-shop sales. Any incoming
-    // subAgentPrices is ignored in favour of the (floored) agent tier.
+    // Sub-shop cost basis ALWAYS mirrors the agent price — the agent buys at the
+    // admin-set price whether they sell directly or through a sub-agent. Any
+    // incoming subAgentPrices is ignored in favour of the agent tier.
     if (agentPrices || subAgentPrices) {
       const effectiveAgent = agentClamped || cur.agentPrices || {};
       updates['pricing.subAgentPrices'] = JSON.parse(JSON.stringify(effectiveAgent));
@@ -1015,7 +986,7 @@ router.put('/pricing', async (req, res) => {
       { $set: updates },
       { upsert: true }
     );
-    res.json({ status: 'success', message: `Pricing updated (platform keeps ≥ GHS ${MIN_PLATFORM_FEE} per bundle; sub-shop cost = agent price; retail ≥ agent price)` });
+    res.json({ status: 'success', message: 'Pricing updated (agent price = admin entry, floored only at DataMart cost; sub-shop cost = agent price)' });
   } catch (err) {
     console.error('Admin error:', err.message);
     res.status(500).json({ status: 'error', message: 'Something went wrong. Please try again.' });
@@ -1060,18 +1031,15 @@ router.post('/pricing/sync', async (req, res) => {
       }
     }
 
-    // Self-heal pass over EVERY entry (not just newly-added ones):
-    //  - agent price >= base + MIN_PLATFORM_FEE (platform keeps a min margin)
-    //  - retail >= agent price (retail always covers the agent's cost)
-    //  - sub-shop cost basis ALWAYS equals the agent price
-    // Makes a sync idempotently repair pricing.
+    // Self-heal pass over EVERY entry (not just newly-added ones): no tier may
+    // sit below the platform/DataMart cost, and the sub-shop cost basis ALWAYS
+    // equals the agent price. No imposed markup — admin's entered prices stand.
     for (const network of Object.keys(basePrices)) {
       for (const capacity of Object.keys(basePrices[network])) {
         const b = basePrices[network][capacity];
         if (b == null) continue;
-        const agentFloor = Math.round((b + MIN_PLATFORM_FEE) * 100) / 100;
-        if (agentPrices[network][capacity] < agentFloor) agentPrices[network][capacity] = agentFloor;
-        if (sellingPrices[network][capacity] < agentPrices[network][capacity]) sellingPrices[network][capacity] = agentPrices[network][capacity];
+        if (agentPrices[network][capacity] < b) agentPrices[network][capacity] = b;
+        if (sellingPrices[network][capacity] < b) sellingPrices[network][capacity] = b;
         subAgentPrices[network][capacity] = agentPrices[network][capacity];
       }
     }
