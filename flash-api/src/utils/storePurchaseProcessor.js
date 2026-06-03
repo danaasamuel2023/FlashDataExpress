@@ -5,9 +5,38 @@ const DataPurchase = require('../models/DataPurchase');
 const Settings = require('../models/Settings');
 const datamartService = require('../services/datamartService');
 
-// Idempotent: creates a DataPurchase for a verified store payment, credits
-// agent/sub-agent profits, and forwards the order to DataMart.
-// Safe to call from BOTH the verify-payment endpoint and the Paystack webhook.
+// Credit agent + sub-agent profit for a CONFIRMED store/sub-shop sale.
+// Profit is earned on delivery, not on order creation — crediting up front let
+// failed/rejected orders pay out money that was never reversed. Only credits
+// when status === 'completed'. Idempotent via storeDetails.profitCredited, so
+// it's safe alongside the webhook/status-poller, which credit the same way for
+// orders that complete asynchronously.
+async function creditStoreProfit(purchase) {
+  const sd = purchase.storeDetails || {};
+  if (purchase.status !== 'completed' || sd.profitCredited) return;
+
+  const agentProfit = sd.agentProfit || 0;
+  const subAgentProfit = sd.subAgentProfit || 0;
+
+  if (agentProfit > 0 && sd.storeId) {
+    await Store.findOneAndUpdate(
+      { _id: sd.storeId },
+      { $inc: { totalEarnings: agentProfit, pendingBalance: agentProfit, totalSales: 1 } }
+    );
+  }
+  if (subAgentProfit > 0 && sd.subAgentId) {
+    await SubAgent.findOneAndUpdate(
+      { _id: sd.subAgentId },
+      { $inc: { totalEarnings: subAgentProfit, pendingBalance: subAgentProfit, totalSales: 1 } }
+    );
+  }
+  purchase.storeDetails.profitCredited = true;
+  await purchase.save();
+}
+
+// Idempotent: creates a DataPurchase for a verified store payment, forwards the
+// order to DataMart, and credits agent/sub-agent profit only once delivery is
+// confirmed. Safe to call from BOTH verify-payment and the Paystack webhook.
 async function processStorePurchase({ reference, metadata }) {
   const meta = metadata || {};
   if (!meta.storeId || !meta.network || !meta.capacity || !meta.phoneNumber) {
@@ -82,21 +111,6 @@ async function processStorePurchase({ reference, metadata }) {
     throw err;
   }
 
-  if (agentProfit > 0) {
-    await Store.findOneAndUpdate(
-      { _id: store._id },
-      { $inc: { totalEarnings: agentProfit, pendingBalance: agentProfit, totalSales: 1 } }
-    );
-  }
-  if (subAgentRef && subAgentProfit > 0) {
-    await SubAgent.findOneAndUpdate(
-      { _id: subAgentRef },
-      { $inc: { totalEarnings: subAgentProfit, pendingBalance: subAgentProfit, totalSales: 1 } }
-    );
-  }
-  purchase.storeDetails.profitCredited = true;
-  await purchase.save();
-
   try {
     const result = await datamartService.purchaseData({
       network: meta.network,
@@ -115,6 +129,10 @@ async function processStorePurchase({ reference, metadata }) {
     purchase.failureReason = err.message;
     await purchase.save();
   }
+
+  // Credit profit only if delivery is confirmed now. Orders still pending/
+  // processing are credited later by the webhook/status-poller on completion.
+  await creditStoreProfit(purchase);
 
   return { ok: true, alreadyProcessed: false, purchase };
 }
@@ -185,21 +203,6 @@ async function processSubShopPurchase({ reference, metadata }) {
     throw err;
   }
 
-  if (agentProfit > 0) {
-    await Store.findOneAndUpdate(
-      { _id: store._id },
-      { $inc: { totalEarnings: agentProfit, pendingBalance: agentProfit, totalSales: 1 } }
-    );
-  }
-  if (subAgentProfit > 0) {
-    await SubAgent.findOneAndUpdate(
-      { _id: subAgent._id },
-      { $inc: { totalEarnings: subAgentProfit, pendingBalance: subAgentProfit, totalSales: 1 } }
-    );
-  }
-  purchase.storeDetails.profitCredited = true;
-  await purchase.save();
-
   try {
     const result = await datamartService.purchaseData({
       network: meta.network,
@@ -218,6 +221,10 @@ async function processSubShopPurchase({ reference, metadata }) {
     purchase.failureReason = err.message;
     await purchase.save();
   }
+
+  // Credit profit only if delivery is confirmed now. Orders still pending/
+  // processing are credited later by the webhook/status-poller on completion.
+  await creditStoreProfit(purchase);
 
   return { ok: true, alreadyProcessed: false, purchase };
 }
