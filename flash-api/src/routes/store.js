@@ -242,13 +242,17 @@ router.put('/products', auth, async (req, res) => {
         || (sellingPrices[p.network] || {})[String(p.capacity)]
         || p.basePrice;
 
+      // Floor the agent's selling price at their cost — an agent must never
+      // sell below the platform price (mirrors the sub-agent guard).
+      const sellingPrice = Math.max(Number(p.sellingPrice) || 0, basePrice);
+
       return {
         updateOne: {
           filter: { storeId: store._id, network: p.network, capacity: p.capacity },
           update: {
             $set: {
               basePrice,
-              sellingPrice: p.sellingPrice,
+              sellingPrice,
               isActive: p.isActive !== false,
             },
           },

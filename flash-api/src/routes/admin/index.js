@@ -941,17 +941,54 @@ router.get('/pricing', async (req, res) => {
 router.put('/pricing', async (req, res) => {
   try {
     const { sellingPrices, basePrices, agentPrices, subAgentPrices } = req.body;
+
+    const current = await Settings.getSettings();
+    const cur = current.pricing || {};
+    // basePrices = the platform / DataMart cost. It's the hard floor: no other
+    // tier may be saved below it. Use the incoming base if provided, else live.
+    const base = basePrices || cur.basePrices || {};
+
+    // Clamp every value in a tier up to the platform cost for its SKU.
+    const floorAtBase = (tier) => {
+      if (!tier) return tier;
+      const out = JSON.parse(JSON.stringify(tier));
+      for (const net of Object.keys(out)) {
+        for (const cap of Object.keys(out[net] || {})) {
+          const b = (base[net] || {})[cap];
+          if (b != null && Number(out[net][cap]) < b) out[net][cap] = b;
+        }
+      }
+      return out;
+    };
+
     const updates = {};
-    if (sellingPrices) updates['pricing.sellingPrices'] = sellingPrices;
     if (basePrices) updates['pricing.basePrices'] = basePrices;
-    if (agentPrices) updates['pricing.agentPrices'] = agentPrices;
-    if (subAgentPrices) updates['pricing.subAgentPrices'] = subAgentPrices;
+
+    let agentClamped = null;
+    if (sellingPrices) updates['pricing.sellingPrices'] = floorAtBase(sellingPrices);
+    if (agentPrices) {
+      agentClamped = floorAtBase(agentPrices);
+      updates['pricing.agentPrices'] = agentClamped;
+    }
+    if (subAgentPrices) {
+      const sub = floorAtBase(subAgentPrices);
+      // Keep the ladder: sub-agent cost basis is never above the agent price.
+      const agentRef = agentClamped || cur.agentPrices || {};
+      for (const net of Object.keys(sub)) {
+        for (const cap of Object.keys(sub[net] || {})) {
+          const a = (agentRef[net] || {})[cap];
+          if (a != null && Number(sub[net][cap]) > a) sub[net][cap] = a;
+        }
+      }
+      updates['pricing.subAgentPrices'] = sub;
+    }
+
     await Settings.findOneAndUpdate(
       { _id: 'app_settings' },
       { $set: updates },
       { upsert: true }
     );
-    res.json({ status: 'success', message: 'Pricing updated' });
+    res.json({ status: 'success', message: 'Pricing updated (clamped so no tier is below the platform cost, and sub-agent ≤ agent)' });
   } catch (err) {
     console.error('Admin error:', err.message);
     res.status(500).json({ status: 'error', message: 'Something went wrong. Please try again.' });
@@ -992,8 +1029,27 @@ router.post('/pricing/sync', async (req, res) => {
           agentPrices[network][capacity] = Math.round(basePrice * 1.03 * 100) / 100;
         }
         if (!subAgentPrices[network][capacity]) {
-          subAgentPrices[network][capacity] = Math.round(basePrice * 1.04 * 100) / 100;
+          // Sub-agent cost basis must stay <= the agent price, so default it to
+          // the SAME markup as the agent tier (never the old 1.04, which sat
+          // ABOVE the agent tier and silently inverted the ladder).
+          subAgentPrices[network][capacity] = Math.round(basePrice * 1.03 * 100) / 100;
         }
+      }
+    }
+
+    // Self-heal pass over EVERY entry (not just newly-added ones): no tier may
+    // sit below the platform/DataMart cost, and the sub-agent cost basis is
+    // capped at the agent price. Makes a sync idempotently fix a broken ladder.
+    for (const network of Object.keys(basePrices)) {
+      for (const capacity of Object.keys(basePrices[network])) {
+        const b = basePrices[network][capacity];
+        if (b == null) continue;
+        if (agentPrices[network][capacity] < b) agentPrices[network][capacity] = b;
+        if (sellingPrices[network][capacity] < b) sellingPrices[network][capacity] = b;
+        let sa = subAgentPrices[network][capacity];
+        if (sa < b) sa = b;
+        if (sa > agentPrices[network][capacity]) sa = agentPrices[network][capacity];
+        subAgentPrices[network][capacity] = sa;
       }
     }
 

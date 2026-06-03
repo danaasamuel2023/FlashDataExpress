@@ -1,1 +1,7 @@
 .claude/
+
+# pricing backups (local only)
+flash-api/pricing-backup-*.json
+flash-api/pricing-fixall-backup-*.json
+subagent-order-breakdown.html
+subagent-order-breakdown.pdf
