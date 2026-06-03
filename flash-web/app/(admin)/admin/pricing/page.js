@@ -15,9 +15,9 @@ const NETWORKS = [
 ];
 
 const PRICE_TIERS = [
-  { id: 'sellingPrices', label: 'User Prices', description: 'Prices for regular users' },
-  { id: 'agentPrices', label: 'Agent Prices', description: 'Platform cost for parent agents' },
-  { id: 'subAgentPrices', label: 'Sub-Agent Prices', description: 'Platform cost for sub-agent sales' },
+  { id: 'sellingPrices', label: 'User Prices', description: 'Retail price regular users pay' },
+  { id: 'agentPrices', label: 'Agent Prices', description: 'Platform cost charged to parent agents' },
+  { id: 'subAgentPrices', label: 'Sub-Shop Platform Cost', description: 'Platform cost charged to the agent on sub-shop sales — auto-mirrors Agent Prices. NOT the sub-agent’s base price (that is the parent agent’s selling price).' },
 ];
 
 export default function AdminPricingPage() {
