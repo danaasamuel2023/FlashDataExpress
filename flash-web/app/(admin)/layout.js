@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import {
   Home, Users, Clock, Wallet, Settings, BarChart3,
-  Menu, X, ChevronRight, LogOut, Zap, Gift, DollarSign, ExternalLink, Store, Undo2, ShoppingBag
+  Menu, X, ChevronRight, LogOut, Zap, Gift, DollarSign, ExternalLink, Store, Undo2, ShoppingBag, UserPlus
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 
@@ -13,6 +13,7 @@ const navItems = [
   { href: '/admin/orders', label: 'Orders', icon: ShoppingBag },
   { href: '/admin/users', label: 'Users', icon: Users },
   { href: '/admin/stores', label: 'Stores', icon: Store },
+  { href: '/admin/sub-agents', label: 'Sub-Agents', icon: UserPlus },
   { href: '/admin/transactions', label: 'Transactions', icon: Clock },
   { href: '/admin/refunds', label: 'Refunds', icon: Undo2 },
   { href: '/admin/withdrawals', label: 'Withdrawals', icon: Wallet },

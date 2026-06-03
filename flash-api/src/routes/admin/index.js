@@ -5,6 +5,7 @@ const User = require('../../models/User');
 const Transaction = require('../../models/Transaction');
 const DataPurchase = require('../../models/DataPurchase');
 const Store = require('../../models/Store');
+const SubAgent = require('../../models/SubAgent');
 const Withdrawal = require('../../models/Withdrawal');
 const { Referral } = require('../../models/Referral');
 const Settings = require('../../models/Settings');
@@ -349,6 +350,130 @@ router.get('/stores/:id/daily-sales', async (req, res) => {
     });
   } catch (err) {
     console.error('Admin store daily-sales error:', err.message);
+    res.status(500).json({ status: 'error', message: 'Something went wrong. Please try again.' });
+  }
+});
+
+// GET /api/admin/sub-agents - All sub-agents with THEIR OWN sales & profit.
+// Sub-shop orders also live under the parent agent's store, but their profit is
+// split: storeDetails.agentProfit -> agent, storeDetails.subAgentProfit -> sub-agent.
+// Here we report only the sub-agent's cut so it's never conflated with the agent's.
+router.get('/sub-agents', async (req, res) => {
+  try {
+    const subAgents = await SubAgent.find()
+      .populate('parentAgentId', 'name email phone')
+      .populate('storeId', 'storeName storeSlug')
+      .sort({ createdAt: -1 })
+      .lean();
+
+    const todayStart = new Date();
+    todayStart.setHours(0, 0, 0, 0);
+
+    const subAgentIds = subAgents.map(s => s._id);
+    const todayAgg = await DataPurchase.aggregate([
+      {
+        $match: {
+          'storeDetails.subAgentId': { $in: subAgentIds },
+          createdAt: { $gte: todayStart },
+          status: { $in: ['completed', 'processing', 'pending'] },
+        },
+      },
+      {
+        $group: {
+          _id: '$storeDetails.subAgentId',
+          revenue: { $sum: '$price' },
+          profit: { $sum: '$storeDetails.subAgentProfit' },
+          count: { $sum: 1 },
+        },
+      },
+    ]);
+    const todayBySub = new Map(todayAgg.map(t => [String(t._id), t]));
+
+    const data = subAgents.map(s => {
+      const today = todayBySub.get(String(s._id)) || { revenue: 0, profit: 0, count: 0 };
+      return {
+        _id: s._id,
+        storeName: s.storeName || (s.storeId?.storeName ? `${s.storeId.storeName} (sub)` : 'Sub-shop'),
+        storeSlug: s.storeSlug,
+        isActive: s.isActive,
+        status: s.status,
+        contactPhone: s.contactPhone,
+        commissionPercent: s.commissionPercent,
+        parentAgent: s.parentAgentId ? {
+          _id: s.parentAgentId._id,
+          name: s.parentAgentId.name,
+          email: s.parentAgentId.email,
+          phone: s.parentAgentId.phone,
+        } : null,
+        parentStoreName: s.storeId?.storeName || null,
+        joinedAt: s.createdAt,
+        // Lifetime, tracked on the SubAgent doc (sub-agent's own cut only)
+        totalSales: s.totalSales || 0,
+        totalEarnings: s.totalEarnings || 0,
+        pendingBalance: s.pendingBalance || 0,
+        // Today (sub-agent's own profit, not the agent's)
+        todayRevenue: today.revenue,
+        todayProfit: today.profit,
+        todaySales: today.count,
+      };
+    });
+
+    res.json({ status: 'success', data });
+  } catch (err) {
+    console.error('Admin sub-agents error:', err.message);
+    res.status(500).json({ status: 'error', message: 'Something went wrong. Please try again.' });
+  }
+});
+
+// GET /api/admin/sub-agents/:id/daily-sales - Today's sales for one sub-agent,
+// reporting the sub-agent's own profit per order.
+router.get('/sub-agents/:id/daily-sales', async (req, res) => {
+  try {
+    const subAgent = await SubAgent.findById(req.params.id)
+      .populate('parentAgentId', 'name email')
+      .populate('storeId', 'storeName storeSlug')
+      .lean();
+    if (!subAgent) {
+      return res.status(404).json({ status: 'error', message: 'Sub-agent not found' });
+    }
+
+    const todayStart = new Date();
+    todayStart.setHours(0, 0, 0, 0);
+
+    const sales = await DataPurchase.find({
+      'storeDetails.subAgentId': subAgent._id,
+      createdAt: { $gte: todayStart },
+    })
+      .sort({ createdAt: -1 })
+      .limit(200)
+      .lean();
+
+    const todayRevenue = sales.reduce((sum, s) => sum + (s.price || 0), 0);
+    const todayProfit = sales.reduce((sum, s) => sum + (s.storeDetails?.subAgentProfit || 0), 0);
+
+    res.json({
+      status: 'success',
+      data: {
+        subAgent: {
+          _id: subAgent._id,
+          storeName: subAgent.storeName || subAgent.storeId?.storeName || 'Sub-shop',
+          storeSlug: subAgent.storeSlug,
+          parentAgent: subAgent.parentAgentId,
+          parentStoreName: subAgent.storeId?.storeName || null,
+          commissionPercent: subAgent.commissionPercent,
+          joinedAt: subAgent.createdAt,
+          totalSales: subAgent.totalSales || 0,
+          totalEarnings: subAgent.totalEarnings || 0,
+          pendingBalance: subAgent.pendingBalance || 0,
+        },
+        sales,
+        todayRevenue,
+        todayProfit,
+        count: sales.length,
+      },
+    });
+  } catch (err) {
+    console.error('Admin sub-agent daily-sales error:', err.message);
     res.status(500).json({ status: 'error', message: 'Something went wrong. Please try again.' });
   }
 });
