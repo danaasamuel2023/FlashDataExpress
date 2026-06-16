@@ -183,17 +183,21 @@ export default function StoreDashboardPage() {
       <div>
         <p className="text-xs font-bold text-text-muted uppercase tracking-wider mb-2">Today</p>
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-          <Card>
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 bg-primary/10 rounded-xl flex items-center justify-center">
-                <ShoppingBag className="w-5 h-5 text-primary" />
+          <Link href="/store/sales">
+            <Card hover>
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 bg-primary/10 rounded-xl flex items-center justify-center">
+                  <ShoppingBag className="w-5 h-5 text-primary" />
+                </div>
+                <div className="flex-1">
+                  <p className="text-xl font-extrabold text-white">{dailySales?.count ?? 0}</p>
+                  <p className="text-xs text-text-muted flex items-center gap-1">
+                    Today&apos;s Sales <CalendarDays className="w-3 h-3" />
+                  </p>
+                </div>
               </div>
-              <div>
-                <p className="text-xl font-extrabold text-white">{dailySales?.count ?? 0}</p>
-                <p className="text-xs text-text-muted">Today&apos;s Sales</p>
-              </div>
-            </div>
-          </Card>
+            </Card>
+          </Link>
           <Card>
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 bg-accent/10 rounded-xl flex items-center justify-center">
@@ -350,9 +354,14 @@ export default function StoreDashboardPage() {
         <Card>
           <div className="flex items-center justify-between mb-4">
             <h2 className="font-bold text-white">Today&apos;s Sales</h2>
-            <button onClick={fetchDailySales} disabled={loadingDaily} className="flex items-center gap-1.5 text-xs font-bold text-primary hover:text-primary/80 disabled:opacity-50">
-              <RefreshCw className={`w-3.5 h-3.5 ${loadingDaily ? 'animate-spin' : ''}`} /> Refresh
-            </button>
+            <div className="flex items-center gap-3">
+              <Link href="/store/sales" className="flex items-center gap-1 text-xs font-bold text-primary hover:text-primary/80">
+                <CalendarDays className="w-3.5 h-3.5" /> View &amp; filter by date
+              </Link>
+              <button onClick={fetchDailySales} disabled={loadingDaily} className="flex items-center gap-1.5 text-xs font-bold text-primary hover:text-primary/80 disabled:opacity-50">
+                <RefreshCw className={`w-3.5 h-3.5 ${loadingDaily ? 'animate-spin' : ''}`} /> Refresh
+              </button>
+            </div>
           </div>
           {loadingDaily ? (
             <div className="flex justify-center py-8"><Loader2 className="w-5 h-5 text-primary animate-spin" /></div>
@@ -462,7 +471,18 @@ export default function StoreDashboardPage() {
       </Card>
 
       {/* Quick links */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
+        <Link href="/store/sales">
+          <Card hover>
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="font-bold text-white">Sales</p>
+                <p className="text-xs text-text-muted">View by date</p>
+              </div>
+              <CalendarDays className="w-5 h-5 text-white/20" />
+            </div>
+          </Card>
+        </Link>
         <Link href="/store/products">
           <Card hover>
             <div className="flex items-center justify-between">

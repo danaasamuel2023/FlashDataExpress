@@ -309,28 +309,36 @@ router.get('/sales', auth, async (req, res) => {
   }
 });
 
-// GET /api/store/daily-sales — Today's store sales with profit
+// GET /api/store/daily-sales — store sales for a single day (defaults to today)
+// Optional ?date=YYYY-MM-DD to view any past day.
 router.get('/daily-sales', auth, async (req, res) => {
   try {
     const store = await Store.findOne({ agentId: req.user._id });
     if (!store) return res.status(404).json({ status: 'error', message: 'Store not found' });
 
-    const todayStart = new Date();
-    todayStart.setHours(0, 0, 0, 0);
+    const dayStart = /^\d{4}-\d{2}-\d{2}$/.test(req.query.date || '')
+      ? new Date(`${req.query.date}T00:00:00`)
+      : new Date();
+    dayStart.setHours(0, 0, 0, 0);
+    const dayEnd = new Date(dayStart);
+    dayEnd.setDate(dayEnd.getDate() + 1);
 
     const sales = await DataPurchase.find({
       'storeDetails.storeId': store._id,
-      createdAt: { $gte: todayStart },
+      createdAt: { $gte: dayStart, $lt: dayEnd },
     })
       .populate({ path: 'storeDetails.subAgentId', select: 'storeName contactPhone contactWhatsapp' })
-      .sort({ createdAt: -1 }).limit(200).lean();
+      .sort({ createdAt: -1 }).limit(500).lean();
 
     const todayProfit = sales.reduce((sum, s) => sum + (s.storeDetails?.agentProfit || 0), 0);
     const todayRevenue = sales.reduce((sum, s) => sum + (s.price || 0), 0);
 
     res.json({
       status: 'success',
-      data: { sales, todayProfit, todayRevenue, count: sales.length },
+      data: {
+        sales, todayProfit, todayRevenue, count: sales.length,
+        date: `${dayStart.getFullYear()}-${String(dayStart.getMonth() + 1).padStart(2, '0')}-${String(dayStart.getDate()).padStart(2, '0')}`,
+      },
     });
   } catch (err) {
     console.error('Store error:', err.message);
