@@ -349,61 +349,22 @@ export default function StoreDashboardPage() {
         </Card>
       )}
 
-      {/* Today's Sales History */}
+      {/* Today's Sales — opens the full filterable Sales page */}
       {store && (
-        <Card>
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="font-bold text-white">Today&apos;s Sales</h2>
-            <div className="flex items-center gap-3">
-              <Link href="/store/sales" className="flex items-center gap-1 text-xs font-bold text-primary hover:text-primary/80">
-                <CalendarDays className="w-3.5 h-3.5" /> View &amp; filter by date
-              </Link>
-              <button onClick={fetchDailySales} disabled={loadingDaily} className="flex items-center gap-1.5 text-xs font-bold text-primary hover:text-primary/80 disabled:opacity-50">
-                <RefreshCw className={`w-3.5 h-3.5 ${loadingDaily ? 'animate-spin' : ''}`} /> Refresh
-              </button>
+        <Link href="/store/sales" className="block">
+          <Card hover>
+            <div className="flex items-center gap-3 sm:gap-4">
+              <div className="w-12 h-12 bg-primary/10 rounded-xl flex items-center justify-center flex-shrink-0">
+                <ShoppingBag className="w-6 h-6 text-primary" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="font-bold text-white text-sm">View Sales</p>
+                <p className="text-xs text-text-muted mt-0.5">See every sale and filter by any date.</p>
+              </div>
+              <ExternalLink className="w-4 h-4 text-primary flex-shrink-0" />
             </div>
-          </div>
-          {loadingDaily ? (
-            <div className="flex justify-center py-8"><Loader2 className="w-5 h-5 text-primary animate-spin" /></div>
-          ) : !dailySales?.sales?.length ? (
-            <p className="text-text-muted text-sm text-center py-8">No store sales today yet. Share your store link to start selling!</p>
-          ) : (
-            <div className="space-y-3 max-h-80 overflow-y-auto">
-              {dailySales.sales.map((sale, i) => {
-                const sub = sale.storeDetails?.subAgentId;
-                const subLabel = sub && typeof sub === 'object'
-                  ? (sub.storeName || sub.contactPhone || sub.contactWhatsapp)
-                  : null;
-                return (
-                <div key={i} className="flex items-center justify-between py-2 border-b border-white/[0.04] last:border-0">
-                  <div>
-                    <p className="font-semibold text-sm text-white">{sale.network} {sale.capacity}GB</p>
-                    <p className="text-xs text-text-muted">{sale.phoneNumber}</p>
-                    {subLabel && (
-                      <p className="text-[10px] font-semibold text-primary mt-0.5">
-                        Sub-agent: {subLabel}
-                        {sub.contactPhone && sub.storeName ? ` • ${sub.contactPhone}` : ''}
-                      </p>
-                    )}
-                    <p className="text-[10px] text-text-muted mt-0.5">{formatDate(sale.createdAt)} &middot; {sale.reference}</p>
-                  </div>
-                  <div className="text-right">
-                    <p className="font-bold text-sm text-white">{formatCurrency(sale.price)}</p>
-                    <p className="text-[10px] font-semibold text-success">
-                      Profit: {formatCurrency(sale.storeDetails?.agentProfit || 0)}
-                    </p>
-                    <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${
-                      sale.status === 'completed' ? 'bg-success/10 text-success' :
-                      sale.status === 'failed' ? 'bg-error/10 text-error' :
-                      'bg-accent/10 text-accent'
-                    }`}>{sale.status}</span>
-                  </div>
-                </div>
-                );
-              })}
-            </div>
-          )}
-        </Card>
+          </Card>
+        </Link>
       )}
 
       {/* Admin support contact */}
