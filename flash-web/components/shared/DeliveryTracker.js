@@ -51,6 +51,20 @@ const STATE_CONFIG = {
   },
 };
 
+// e.g. "Jun 17, 11:29 PM" — short, human, no year.
+function formatDateTime(iso) {
+  if (!iso) return null;
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return null;
+  return d.toLocaleString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+    hour12: true,
+  });
+}
+
 function timeAgo(iso) {
   if (!iso) return null;
   const diff = Date.now() - new Date(iso).getTime();
@@ -104,7 +118,9 @@ export default function DeliveryTracker() {
   const cfg = STATE_CONFIG[state] || STATE_CONFIG.unknown;
   const Icon = cfg.icon;
   const pendingBatches = data.scanner?.pendingBatches || 0;
-  const lastDeliveredAgo = timeAgo(data.lastDelivered?.deliveredAt);
+  const yld = data.yourLastDelivered;
+  const placedAt = formatDateTime(yld?.placedAt);
+  const deliveredAt = formatDateTime(yld?.deliveredAt);
 
   return (
     <div className={`rounded-2xl border ${cfg.border} ${cfg.bg} p-4`}>
@@ -141,12 +157,23 @@ export default function DeliveryTracker() {
                 {pendingBatches} batch{pendingBatches === 1 ? '' : 'es'} pending
               </span>
             )}
-            {lastDeliveredAgo && (
-              <span className="text-text-muted">
-                Last delivery {lastDeliveredAgo}
-              </span>
-            )}
           </div>
+
+          {yld && deliveredAt && (
+            <p className="text-xs text-text-muted mt-2">
+              Last delivered:{' '}
+              {yld.trackingId && (
+                <>
+                  <span className="text-text font-mono">Tracking #{yld.trackingId}</span>
+                  {' — '}
+                </>
+              )}
+              {placedAt && (
+                <>placed <span className="text-text">{placedAt}</span>, </>
+              )}
+              delivered <span className="text-success">{deliveredAt}</span>
+            </p>
+          )}
         </div>
       </div>
     </div>

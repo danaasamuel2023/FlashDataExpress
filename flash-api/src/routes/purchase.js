@@ -503,6 +503,26 @@ router.get('/delivery-tracker', auth, async (req, res) => {
       status: { $in: ['pending', 'processing'] },
     });
 
+    // This user's own most recent delivered order — safe to expose its tracking
+    // id and timing since it belongs to them (unlike the upstream pipeline-wide
+    // lastDelivered, which we strip of tracking ids to avoid leaking others').
+    const lastOwn = await DataPurchase.findOne({
+      userId: req.user._id,
+      status: 'completed',
+      completedAt: { $ne: null },
+    })
+      .sort({ completedAt: -1 })
+      .select('trackingId createdAt completedAt')
+      .lean();
+
+    const yourLastDelivered = lastOwn?.completedAt
+      ? {
+          trackingId: lastOwn.trackingId || null,
+          placedAt: lastOwn.createdAt,
+          deliveredAt: lastOwn.completedAt,
+        }
+      : null;
+
     let tracker = null;
     try {
       tracker = await datamartService.getDeliveryTracker();
@@ -515,6 +535,7 @@ router.get('/delivery-tracker', auth, async (req, res) => {
           scanner: { state: 'unknown', active: false, waiting: false, waitSeconds: 0, pendingBatches: 0 },
           message: 'Live delivery status is temporarily unavailable.',
           lastDelivered: null,
+          yourLastDelivered,
           checkingNow: null,
           yourPending,
           updatedAt: new Date().toISOString(),
@@ -532,6 +553,7 @@ router.get('/delivery-tracker', auth, async (req, res) => {
         lastDelivered: ld?.deliveredAt
           ? { deliveredAt: ld.deliveredAt, placedAt: ld.placedAt || null }
           : null,
+        yourLastDelivered,
         checkingNow: tracker?.checkingNow?.batchNumber
           ? { active: true }
           : null,
