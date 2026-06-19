@@ -503,23 +503,31 @@ router.get('/delivery-tracker', auth, async (req, res) => {
       status: { $in: ['pending', 'processing'] },
     });
 
-    // This user's own most recent delivered order — safe to expose its tracking
-    // id and timing since it belongs to them (unlike the upstream pipeline-wide
-    // lastDelivered, which we strip of tracking ids to avoid leaking others').
-    const lastOwn = await DataPurchase.findOne({
-      userId: req.user._id,
+    // The system-wide most recent delivered order — a live "we just delivered
+    // something" signal shown to everyone. Only the tracking id and timing are
+    // exposed (no phone/name/user), so it carries no personal info.
+    //
+    // We rank by placedAt (createdAt) rather than completedAt: every order has
+    // it, and with near-instant delivery the newest completed order is the
+    // latest delivery. Some completion paths historically left completedAt
+    // unset — ranking by completedAt would silently skip those orders.
+    const lastOrder = await DataPurchase.findOne({
       status: 'completed',
-      completedAt: { $ne: null },
     })
-      .sort({ completedAt: -1 })
-      .select('trackingId createdAt completedAt')
+      .sort({ createdAt: -1 })
+      .select('trackingId createdAt completedAt updatedAt')
       .lean();
 
-    const yourLastDelivered = lastOwn?.completedAt
+    const latestDelivered = lastOrder
       ? {
-          trackingId: lastOwn.trackingId || null,
-          placedAt: lastOwn.createdAt,
-          deliveredAt: lastOwn.completedAt,
+          trackingId: lastOrder.trackingId || null,
+          placedAt: lastOrder.createdAt,
+          // Exact when we have it; fall back to updatedAt (≈ completion save)
+          // for older rows that predate completedAt being set.
+          deliveredAt: lastOrder.completedAt || lastOrder.updatedAt || null,
+          // Only a real completedAt gives an accurate wait time; suppress it
+          // otherwise so we don't show a misleading duration.
+          exactDelivery: !!lastOrder.completedAt,
         }
       : null;
 
@@ -535,7 +543,7 @@ router.get('/delivery-tracker', auth, async (req, res) => {
           scanner: { state: 'unknown', active: false, waiting: false, waitSeconds: 0, pendingBatches: 0 },
           message: 'Live delivery status is temporarily unavailable.',
           lastDelivered: null,
-          yourLastDelivered,
+          latestDelivered,
           checkingNow: null,
           yourPending,
           updatedAt: new Date().toISOString(),
@@ -553,7 +561,7 @@ router.get('/delivery-tracker', auth, async (req, res) => {
         lastDelivered: ld?.deliveredAt
           ? { deliveredAt: ld.deliveredAt, placedAt: ld.placedAt || null }
           : null,
-        yourLastDelivered,
+        latestDelivered,
         checkingNow: tracker?.checkingNow?.batchNumber
           ? { active: true }
           : null,

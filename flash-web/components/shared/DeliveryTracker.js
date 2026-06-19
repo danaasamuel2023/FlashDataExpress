@@ -65,6 +65,20 @@ function formatDateTime(iso) {
   });
 }
 
+// Compact gap between two timestamps, e.g. "45s", "4m", "1h 12m".
+function formatDuration(fromIso, toIso) {
+  if (!fromIso || !toIso) return null;
+  const ms = new Date(toIso).getTime() - new Date(fromIso).getTime();
+  if (Number.isNaN(ms) || ms < 0) return null;
+  const secs = Math.round(ms / 1000);
+  if (secs < 60) return `${secs}s`;
+  const mins = Math.floor(secs / 60);
+  if (mins < 60) return `${mins}m`;
+  const hrs = Math.floor(mins / 60);
+  const remMins = mins % 60;
+  return remMins ? `${hrs}h ${remMins}m` : `${hrs}h`;
+}
+
 function timeAgo(iso) {
   if (!iso) return null;
   const diff = Date.now() - new Date(iso).getTime();
@@ -118,9 +132,12 @@ export default function DeliveryTracker() {
   const cfg = STATE_CONFIG[state] || STATE_CONFIG.unknown;
   const Icon = cfg.icon;
   const pendingBatches = data.scanner?.pendingBatches || 0;
-  const yld = data.yourLastDelivered;
-  const placedAt = formatDateTime(yld?.placedAt);
-  const deliveredAt = formatDateTime(yld?.deliveredAt);
+  const last = data.latestDelivered;
+  const placedAt = formatDateTime(last?.placedAt);
+  const deliveredAt = formatDateTime(last?.deliveredAt);
+  const waited = last?.exactDelivery
+    ? formatDuration(last?.placedAt, last?.deliveredAt)
+    : null;
 
   return (
     <div className={`rounded-2xl border ${cfg.border} ${cfg.bg} p-4`}>
@@ -159,12 +176,12 @@ export default function DeliveryTracker() {
             )}
           </div>
 
-          {yld && deliveredAt && (
+          {last && deliveredAt && (
             <p className="text-xs text-text-muted mt-2">
               Last delivered:{' '}
-              {yld.trackingId && (
+              {last.trackingId && (
                 <>
-                  <span className="text-text font-mono">Tracking #{yld.trackingId}</span>
+                  <span className="text-text font-mono">Tracking #{last.trackingId}</span>
                   {' — '}
                 </>
               )}
@@ -172,6 +189,12 @@ export default function DeliveryTracker() {
                 <>placed <span className="text-text">{placedAt}</span>, </>
               )}
               delivered <span className="text-success">{deliveredAt}</span>
+              {waited && (
+                <>
+                  {' '}
+                  <span className={`font-semibold ${cfg.color}`}>· wait time {waited}</span>
+                </>
+              )}
             </p>
           )}
         </div>

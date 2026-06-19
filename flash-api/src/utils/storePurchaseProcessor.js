@@ -122,6 +122,7 @@ async function processStorePurchase({ reference, metadata }) {
     const dmStatus = (result?.orderStatus || result?.status || '').toLowerCase();
     if (dmStatus === 'completed' || dmStatus === 'success' || dmStatus === 'delivered') {
       purchase.status = 'completed';
+      if (!purchase.completedAt) purchase.completedAt = new Date();
     }
     await purchase.save();
   } catch (err) {
@@ -214,6 +215,7 @@ async function processSubShopPurchase({ reference, metadata }) {
     const dmStatus = (result?.orderStatus || result?.status || '').toLowerCase();
     if (dmStatus === 'completed' || dmStatus === 'success' || dmStatus === 'delivered') {
       purchase.status = 'completed';
+      if (!purchase.completedAt) purchase.completedAt = new Date();
     }
     await purchase.save();
   } catch (err) {

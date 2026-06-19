@@ -83,6 +83,9 @@ DataPurchaseSchema.index({ reference: 1 });
 DataPurchaseSchema.index({ datamartReference: 1 });
 DataPurchaseSchema.index({ ghustReference: 1 });
 DataPurchaseSchema.index({ status: 1 });
+// Backs the delivery tracker's "latest delivered system-wide" lookup —
+// narrow to completed + sort by placed time without an in-memory sort.
+DataPurchaseSchema.index({ status: 1, createdAt: -1 });
 DataPurchaseSchema.index({ 'storeDetails.storeId': 1, createdAt: -1 });
 
 module.exports = mongoose.model('DataPurchase', DataPurchaseSchema);

@@ -715,6 +715,7 @@ router.post('/refunds/:id/reverse', async (req, res) => {
     }
 
     purchase.status = 'completed';
+    if (!purchase.completedAt) purchase.completedAt = new Date();
     purchase.refundedAt = undefined;
     purchase.failureReason = undefined;
     await purchase.save();
