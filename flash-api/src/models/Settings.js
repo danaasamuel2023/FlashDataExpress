@@ -55,6 +55,15 @@ const SettingsSchema = new mongoose.Schema({
     minimumMarkup: { type: Number, default: 0 },
     maximumMarkup: { type: Number, default: 50 }
   },
+  // WAEC / BECE result checkers, sourced from DataMart's /api/checkers API
+  // (same reseller key as data). `cost` is what DataMart charges us; the
+  // selling prices are what the customer pays — admin-editable.
+  resultChecker: {
+    enabled: { type: Boolean, default: true },
+    cost: { type: Number, default: 15.7 },
+    waecPrice: { type: Number, default: 17 },
+    becePrice: { type: Number, default: 17 },
+  },
   sms: {
     apiKey: { type: String, default: '' },
     senderId: { type: String, default: 'DataSwift' },

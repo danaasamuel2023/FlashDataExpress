@@ -75,6 +75,34 @@ class DataMartService {
     return data;
   }
 
+  // ── Result checkers (WAEC / BECE) — DataMart /api/checkers, same reseller key ──
+
+  // Available checker products with upstream stock counts.
+  async getResultCheckers() {
+    const client = await this.getClient();
+    const res = await client.get('/api/checkers/products');
+    return res.data?.data || [];
+  }
+
+  // Buy one checker. `ref` is our own reference so the two systems share an id.
+  // skipSms: true — we deliver the serial/PIN on-screen and in history ourselves.
+  async purchaseResultChecker({ checkerType, phoneNumber, ref }) {
+    const client = await this.getClient();
+    const res = await client.post('/api/checkers/purchase', {
+      checkerType,
+      phoneNumber,
+      ref,
+      skipSms: true,
+    });
+    return res.data?.data;
+  }
+
+  async checkResultCheckerStatus(reference) {
+    const client = await this.getClient();
+    const res = await client.get(`/api/checkers/order-status/${reference}`);
+    return res.data?.data;
+  }
+
   // Live state of DataMart's delivery scanner pipeline. We authenticate with
   // our single reseller key, so the upstream `yourOrders` field reflects ALL
   // FlashData orders in the batch (other customers included) — the caller is

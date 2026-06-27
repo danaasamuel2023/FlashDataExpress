@@ -1369,6 +1369,62 @@ router.delete('/announcements/:id', async (req, res) => {
   }
 });
 
+// ─── RESULT CHECKER CONFIG (WAEC / BECE pricing + availability) ───
+
+// GET /api/admin/checker-config — current pricing + live DataMart stock
+router.get('/checker-config', async (req, res) => {
+  try {
+    const settings = await Settings.getSettings();
+    const rc = settings?.resultChecker || {};
+
+    let stock = null;
+    try {
+      const upstream = await datamartService.getResultCheckers();
+      stock = upstream.map(p => ({
+        checkerType: (p.name || '').toUpperCase(),
+        inStock: !!p.inStock,
+        stockCount: p.stockCount ?? null,
+        providerPrice: p.price ?? null,
+      }));
+    } catch (err) {
+      stock = null; // DataMart unreachable — pricing still editable.
+    }
+
+    res.json({
+      status: 'success',
+      data: {
+        enabled: rc.enabled !== false,
+        cost: rc.cost ?? 15.7,
+        waecPrice: rc.waecPrice ?? 0,
+        becePrice: rc.becePrice ?? 0,
+        stock,
+      },
+    });
+  } catch (err) {
+    console.error('Admin checker-config get error:', err.message);
+    res.status(500).json({ status: 'error', message: 'Something went wrong. Please try again.' });
+  }
+});
+
+// PUT /api/admin/checker-config — update pricing / availability
+router.put('/checker-config', async (req, res) => {
+  try {
+    const { enabled, cost, waecPrice, becePrice } = req.body;
+    const update = {};
+    if (enabled !== undefined) update['resultChecker.enabled'] = !!enabled;
+    if (cost !== undefined && cost >= 0) update['resultChecker.cost'] = Number(cost);
+    if (waecPrice !== undefined && waecPrice >= 0) update['resultChecker.waecPrice'] = Number(waecPrice);
+    if (becePrice !== undefined && becePrice >= 0) update['resultChecker.becePrice'] = Number(becePrice);
+
+    await Settings.findByIdAndUpdate('app_settings', { $set: update }, { upsert: true });
+    const settings = await Settings.getSettings();
+    res.json({ status: 'success', message: 'Result checker settings updated', data: settings.resultChecker });
+  } catch (err) {
+    console.error('Admin checker-config update error:', err.message);
+    res.status(500).json({ status: 'error', message: 'Something went wrong. Please try again.' });
+  }
+});
+
 // ─── DEVELOPER API KEYS (admin approves access) ───
 
 // GET /api/admin/api-keys — list every API key with its owner

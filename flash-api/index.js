@@ -80,6 +80,7 @@ app.use('/api/webhook', require('./src/routes/webhook'));
 app.use('/api/admin', require('./src/routes/admin'));
 app.use('/api/api-keys', require('./src/routes/apikeys'));
 app.use('/api/v1', require('./src/routes/api/v1'));
+app.use('/api/checker', require('./src/routes/checker'));
 
 // 404 handler
 app.use((req, res) => {

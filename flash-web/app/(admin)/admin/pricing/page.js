@@ -5,6 +5,7 @@ import toast from 'react-hot-toast';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
 import NetworkIcon from '@/components/shared/NetworkIcon';
+import AdminCheckerConfig from '@/components/shared/AdminCheckerConfig';
 import { formatCurrency } from '@/lib/constants';
 import api from '@/lib/api';
 
@@ -197,6 +198,9 @@ export default function AdminPricingPage() {
           </Button>
         </div>
       </div>
+
+      {/* Result checker pricing (WAEC / BECE) */}
+      <AdminCheckerConfig />
 
       {/* Price tier tabs */}
       <div className="flex gap-2">
