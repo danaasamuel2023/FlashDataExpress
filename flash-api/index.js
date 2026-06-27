@@ -78,6 +78,8 @@ app.use('/api/withdrawal', require('./src/routes/withdrawal'));
 app.use('/api/referral', require('./src/routes/referral'));
 app.use('/api/webhook', require('./src/routes/webhook'));
 app.use('/api/admin', require('./src/routes/admin'));
+app.use('/api/api-keys', require('./src/routes/apikeys'));
+app.use('/api/v1', require('./src/routes/api/v1'));
 
 // 404 handler
 app.use((req, res) => {

@@ -5,7 +5,7 @@ import { usePathname, useRouter } from 'next/navigation';
 import {
   Home, ShoppingBag, Clock, Wallet, Gift, UserCircle, Store,
   Menu, X, ChevronRight, ChevronLeft, LogOut, Zap, Package, MessageCircle,
-  TrendingUp, DollarSign, Sparkles, Layers
+  TrendingUp, DollarSign, Sparkles, Layers, Code2
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { formatCurrency } from '@/lib/constants';
@@ -19,6 +19,7 @@ const navItems = [
   { href: '/wallet', label: 'Wallet', icon: Wallet },
   { href: '/bulk-buy', label: 'Bulk Purchase', icon: Layers },
   { href: '/store/dashboard', label: 'Agent Store', icon: Store },
+  { href: '/developer', label: 'Developer API', icon: Code2 },
   { href: '/referrals', label: 'Referrals', icon: Gift },
   { href: '/profile', label: 'Profile', icon: UserCircle },
 ];

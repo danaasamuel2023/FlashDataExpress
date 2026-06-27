@@ -9,6 +9,8 @@ const SubAgent = require('../../models/SubAgent');
 const Withdrawal = require('../../models/Withdrawal');
 const { Referral } = require('../../models/Referral');
 const Settings = require('../../models/Settings');
+const Announcement = require('../../models/Announcement');
+const ApiKey = require('../../models/ApiKey');
 const datamartService = require('../../services/datamartService');
 const paystackService = require('../../services/paystackService');
 const { encrypt, mask, isConfigured } = require('../../utils/encryption');
@@ -1289,6 +1291,129 @@ router.put('/referrals/config', async (req, res) => {
     res.json({ status: 'success', message: 'Referral config updated' });
   } catch (err) {
     console.error('Admin error:', err.message);
+    res.status(500).json({ status: 'error', message: 'Something went wrong. Please try again.' });
+  }
+});
+
+// ─── ANNOUNCEMENTS (admin-posted updates for agents & sub-agents) ───
+
+// GET /api/admin/announcements — list every announcement (active or not)
+router.get('/announcements', async (req, res) => {
+  try {
+    const announcements = await Announcement.find()
+      .sort({ pinned: -1, createdAt: -1 })
+      .lean();
+    res.json({ status: 'success', data: announcements });
+  } catch (err) {
+    console.error('Admin announcements list error:', err.message);
+    res.status(500).json({ status: 'error', message: 'Something went wrong. Please try again.' });
+  }
+});
+
+// POST /api/admin/announcements — create
+router.post('/announcements', async (req, res) => {
+  try {
+    const { title, message, audience, pinned, isActive } = req.body;
+    if (!title?.trim() || !message?.trim()) {
+      return res.status(400).json({ status: 'error', message: 'Title and message are required' });
+    }
+    const allowed = ['agents', 'subagents', 'all'];
+    const announcement = await Announcement.create({
+      title: title.trim(),
+      message: message.trim(),
+      audience: allowed.includes(audience) ? audience : 'all',
+      pinned: !!pinned,
+      isActive: isActive !== false,
+      createdBy: req.user._id,
+    });
+    res.status(201).json({ status: 'success', data: announcement });
+  } catch (err) {
+    console.error('Admin announcement create error:', err.message);
+    res.status(500).json({ status: 'error', message: 'Something went wrong. Please try again.' });
+  }
+});
+
+// PUT /api/admin/announcements/:id — update / toggle
+router.put('/announcements/:id', async (req, res) => {
+  try {
+    const { title, message, audience, pinned, isActive } = req.body;
+    const update = {};
+    if (title !== undefined) update.title = String(title).trim();
+    if (message !== undefined) update.message = String(message).trim();
+    if (audience !== undefined && ['agents', 'subagents', 'all'].includes(audience)) update.audience = audience;
+    if (pinned !== undefined) update.pinned = !!pinned;
+    if (isActive !== undefined) update.isActive = !!isActive;
+
+    const announcement = await Announcement.findByIdAndUpdate(req.params.id, update, { new: true });
+    if (!announcement) {
+      return res.status(404).json({ status: 'error', message: 'Announcement not found' });
+    }
+    res.json({ status: 'success', data: announcement });
+  } catch (err) {
+    console.error('Admin announcement update error:', err.message);
+    res.status(500).json({ status: 'error', message: 'Something went wrong. Please try again.' });
+  }
+});
+
+// DELETE /api/admin/announcements/:id
+router.delete('/announcements/:id', async (req, res) => {
+  try {
+    const deleted = await Announcement.findByIdAndDelete(req.params.id);
+    if (!deleted) {
+      return res.status(404).json({ status: 'error', message: 'Announcement not found' });
+    }
+    res.json({ status: 'success', message: 'Announcement deleted' });
+  } catch (err) {
+    console.error('Admin announcement delete error:', err.message);
+    res.status(500).json({ status: 'error', message: 'Something went wrong. Please try again.' });
+  }
+});
+
+// ─── DEVELOPER API KEYS (admin approves access) ───
+
+// GET /api/admin/api-keys — list every API key with its owner
+router.get('/api-keys', async (req, res) => {
+  try {
+    const keys = await ApiKey.find()
+      .populate('userId', 'name email phoneNumber walletBalance')
+      .sort({ status: 1, createdAt: -1 })
+      .lean();
+    const data = keys.map(k => ({
+      id: k._id,
+      name: k.name,
+      keyPrefix: k.keyPrefix,
+      status: k.status,
+      lastUsedAt: k.lastUsedAt || null,
+      createdAt: k.createdAt,
+      user: k.userId ? {
+        id: k.userId._id,
+        name: k.userId.name,
+        email: k.userId.email,
+        phoneNumber: k.userId.phoneNumber,
+        walletBalance: k.userId.walletBalance,
+      } : null,
+    }));
+    res.json({ status: 'success', data });
+  } catch (err) {
+    console.error('Admin api-keys list error:', err.message);
+    res.status(500).json({ status: 'error', message: 'Something went wrong. Please try again.' });
+  }
+});
+
+// PUT /api/admin/api-keys/:id — approve (active) or revoke an API key
+router.put('/api-keys/:id', async (req, res) => {
+  try {
+    const { status } = req.body;
+    if (!['active', 'revoked', 'pending'].includes(status)) {
+      return res.status(400).json({ status: 'error', message: 'status must be active, revoked or pending' });
+    }
+    const keyDoc = await ApiKey.findByIdAndUpdate(req.params.id, { status }, { new: true });
+    if (!keyDoc) {
+      return res.status(404).json({ status: 'error', message: 'API key not found' });
+    }
+    res.json({ status: 'success', message: `API key ${status === 'active' ? 'approved' : status}`, data: { id: keyDoc._id, status: keyDoc.status } });
+  } catch (err) {
+    console.error('Admin api-key update error:', err.message);
     res.status(500).json({ status: 'error', message: 'Something went wrong. Please try again.' });
   }
 });

@@ -91,21 +91,21 @@ function timeAgo(iso) {
   return `${Math.floor(hrs / 24)}d ago`;
 }
 
-export default function DeliveryTracker() {
+export default function DeliveryTracker({ endpoint = '/purchase/delivery-tracker' } = {}) {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const timerRef = useRef(null);
 
   const fetchTracker = useCallback(async () => {
     try {
-      const res = await api.get('/purchase/delivery-tracker');
+      const res = await api.get(endpoint);
       setData(res.data.data || null);
     } catch {
       setData(null);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [endpoint]);
 
   useEffect(() => {
     fetchTracker();

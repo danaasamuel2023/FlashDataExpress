@@ -8,6 +8,7 @@ const DataPurchase = require('../models/DataPurchase');
 const Transaction = require('../models/Transaction');
 const User = require('../models/User');
 const Settings = require('../models/Settings');
+const Announcement = require('../models/Announcement');
 const paystackService = require('../services/paystackService');
 const { generateReference } = require('../utils/helpers');
 
@@ -426,6 +427,24 @@ router.get('/earnings', auth, async (req, res) => {
     });
   } catch (err) {
     console.error('Store error:', err.message);
+    res.status(500).json({ status: 'error', message: 'Something went wrong. Please try again.' });
+  }
+});
+
+// GET /api/store/announcements — active announcements for agents to copy & share
+router.get('/announcements', auth, async (req, res) => {
+  try {
+    const announcements = await Announcement.find({
+      isActive: true,
+      audience: { $in: ['agents', 'all'] },
+    })
+      .sort({ pinned: -1, createdAt: -1 })
+      .limit(50)
+      .select('title message pinned createdAt')
+      .lean();
+    res.json({ status: 'success', data: announcements });
+  } catch (err) {
+    console.error('Store announcements error:', err.message);
     res.status(500).json({ status: 'error', message: 'Something went wrong. Please try again.' });
   }
 });

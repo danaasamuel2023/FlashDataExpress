@@ -2,20 +2,12 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { BarChart3, DollarSign, ShoppingBag, Package, Copy, Check, ExternalLink, LogOut, Loader2, Clock, MessageCircle, Save, CalendarDays, RefreshCw, Wallet, ChevronDown, ChevronUp } from 'lucide-react';
+import { BarChart3, DollarSign, ShoppingBag, Package, Copy, Check, ExternalLink, LogOut, Loader2, MessageCircle, Save, CalendarDays, Wallet, TrendingUp, ChevronRight } from 'lucide-react';
 import toast from 'react-hot-toast';
-import { formatCurrency, formatDate } from '@/lib/constants';
+import { formatCurrency } from '@/lib/constants';
 import api from '@/lib/api';
-
-function formatDayLabel(dateStr) {
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const d = new Date(dateStr + 'T00:00:00');
-  const diff = Math.round((today - d) / (1000 * 60 * 60 * 24));
-  if (diff === 0) return 'Today';
-  if (diff === 1) return 'Yesterday';
-  return d.toLocaleDateString(undefined, { weekday: 'long', month: 'short', day: 'numeric' });
-}
+import DeliveryTracker from '@/components/shared/DeliveryTracker';
+import AnnouncementBoard from '@/components/shared/AnnouncementBoard';
 
 export default function SubAgentDashboardPage() {
   const router = useRouter();
@@ -25,10 +17,6 @@ export default function SubAgentDashboardPage() {
   const [whatsappInput, setWhatsappInput] = useState('');
   const [savingWhatsapp, setSavingWhatsapp] = useState(false);
   const [dailySales, setDailySales] = useState(null);
-  const [loadingDaily, setLoadingDaily] = useState(false);
-  const [history, setHistory] = useState(null);
-  const [historyOpen, setHistoryOpen] = useState(false);
-  const [loadingHistory, setLoadingHistory] = useState(false);
 
   useEffect(() => {
     const token = localStorage.getItem('ds_token');
@@ -39,24 +27,6 @@ export default function SubAgentDashboardPage() {
     fetchDashboard();
     fetchDailySales();
   }, []);
-
-  const fetchHistory = async () => {
-    setLoadingHistory(true);
-    try {
-      const res = await api.get('/subagent/my-daily-history?days=7');
-      setHistory(res.data.data);
-    } catch {
-      // ignore
-    } finally {
-      setLoadingHistory(false);
-    }
-  };
-
-  const toggleHistory = () => {
-    const next = !historyOpen;
-    setHistoryOpen(next);
-    if (next && !history) fetchHistory();
-  };
 
   const fetchDashboard = async () => {
     try {
@@ -79,14 +49,11 @@ export default function SubAgentDashboardPage() {
   };
 
   const fetchDailySales = async () => {
-    setLoadingDaily(true);
     try {
       const res = await api.get('/subagent/my-daily-sales');
       setDailySales(res.data.data);
     } catch {
       // ignore
-    } finally {
-      setLoadingDaily(false);
     }
   };
 
@@ -132,7 +99,7 @@ export default function SubAgentDashboardPage() {
 
   if (!dashboard) return null;
 
-  const { subAgent, sales } = dashboard;
+  const { subAgent } = dashboard;
 
   return (
     <div className="min-h-screen bg-gray-950">
@@ -163,21 +130,29 @@ export default function SubAgentDashboardPage() {
       </div>
 
       <div className="max-w-5xl mx-auto px-4 py-6 space-y-6">
+        {/* Delivery system — live status of orders placed through your store */}
+        <DeliveryTracker endpoint="/subagent/delivery-tracker" />
+
+        {/* Announcements — admin updates sub-agents can copy & forward */}
+        <AnnouncementBoard endpoint="/subagent/announcements" variant="subagent" />
+
         {/* Today's stats — reset at midnight */}
         <div>
           <p className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-2">Today</p>
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-            <div className="bg-gray-900 border border-gray-800 rounded-xl p-4">
+            <Link href="/subagent/sales" className="bg-gray-900 border border-gray-800 rounded-xl p-4 hover:border-amber-500/30 transition-colors">
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 bg-amber-500/10 rounded-xl flex items-center justify-center">
                   <ShoppingBag className="w-5 h-5 text-amber-400" />
                 </div>
                 <div>
                   <p className="text-xl font-extrabold text-white">{dailySales?.count ?? 0}</p>
-                  <p className="text-xs text-gray-500">Today&apos;s Sales</p>
+                  <p className="text-xs text-gray-500 flex items-center gap-1">
+                    Today&apos;s Sales <CalendarDays className="w-3 h-3" />
+                  </p>
                 </div>
               </div>
-            </div>
+            </Link>
             <div className="bg-gray-900 border border-gray-800 rounded-xl p-4">
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 bg-blue-500/10 rounded-xl flex items-center justify-center">
@@ -214,38 +189,32 @@ export default function SubAgentDashboardPage() {
           </div>
         </div>
 
-        {/* Lifetime totals — Total Sales / Total Earnings open the daily breakdown */}
+        {/* Lifetime totals */}
         <div>
           <p className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-2">All Time</p>
           <div className="grid grid-cols-3 gap-4">
-            <button onClick={toggleHistory} className="bg-gray-900 border border-gray-800 rounded-xl p-4 text-left hover:border-amber-500/30 transition-colors">
+            <Link href="/subagent/history" className="bg-gray-900 border border-gray-800 rounded-xl p-4 hover:border-amber-500/30 transition-colors">
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 bg-amber-500/10 rounded-xl flex items-center justify-center">
                   <ShoppingBag className="w-5 h-5 text-amber-400" />
                 </div>
                 <div className="flex-1">
                   <p className="text-lg font-extrabold text-white">{subAgent.totalSales || 0}</p>
-                  <p className="text-xs text-gray-500 flex items-center gap-1">
-                    Total Sales <CalendarDays className="w-3 h-3" />
-                  </p>
+                  <p className="text-xs text-gray-500">Total Sales</p>
                 </div>
-                {historyOpen ? <ChevronUp className="w-4 h-4 text-gray-500" /> : <ChevronDown className="w-4 h-4 text-gray-500" />}
               </div>
-            </button>
-            <button onClick={toggleHistory} className="bg-gray-900 border border-gray-800 rounded-xl p-4 text-left hover:border-amber-500/30 transition-colors">
+            </Link>
+            <Link href="/subagent/history" className="bg-gray-900 border border-gray-800 rounded-xl p-4 hover:border-amber-500/30 transition-colors">
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 bg-green-500/10 rounded-xl flex items-center justify-center">
                   <DollarSign className="w-5 h-5 text-green-400" />
                 </div>
                 <div className="flex-1">
                   <p className="text-lg font-extrabold text-white">{formatCurrency(subAgent.totalEarnings || 0)}</p>
-                  <p className="text-xs text-gray-500 flex items-center gap-1">
-                    Total Earnings <CalendarDays className="w-3 h-3" />
-                  </p>
+                  <p className="text-xs text-gray-500">Total Earnings</p>
                 </div>
-                {historyOpen ? <ChevronUp className="w-4 h-4 text-gray-500" /> : <ChevronDown className="w-4 h-4 text-gray-500" />}
               </div>
-            </button>
+            </Link>
             <div className="bg-gray-900 border border-gray-800 rounded-xl p-4">
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 bg-blue-500/10 rounded-xl flex items-center justify-center">
@@ -258,102 +227,39 @@ export default function SubAgentDashboardPage() {
               </div>
             </div>
           </div>
-          <p className="text-[10px] text-gray-500 mt-2">
-            Tap <span className="font-semibold">Total Sales</span> or <span className="font-semibold">Total Earnings</span> for a day-by-day breakdown.
-          </p>
         </div>
 
-        {/* 7-day breakdown panel */}
-        {historyOpen && (
-          <div className="bg-gray-900 border border-gray-800 rounded-xl p-4">
-            <div className="flex items-center justify-between mb-4">
-              <div>
-                <h2 className="font-bold text-white">Daily Sales History</h2>
-                <p className="text-xs text-gray-500 mt-0.5">Last 7 days &middot; resets at midnight</p>
+        {/* Find an order — opens the date-filterable Sales page */}
+        <Link href="/subagent/sales" className="block">
+          <div className="bg-gray-900 border border-gray-800 rounded-xl p-4 hover:border-amber-500/30 transition-colors">
+            <div className="flex items-center gap-3 sm:gap-4">
+              <div className="w-12 h-12 bg-amber-500/10 rounded-xl flex items-center justify-center flex-shrink-0">
+                <ShoppingBag className="w-6 h-6 text-amber-400" />
               </div>
-              <button onClick={fetchHistory} disabled={loadingHistory} className="flex items-center gap-1 text-xs text-amber-400 font-bold disabled:opacity-50">
-                <RefreshCw className={`w-3 h-3 ${loadingHistory ? 'animate-spin' : ''}`} /> Refresh
-              </button>
+              <div className="flex-1 min-w-0">
+                <p className="font-bold text-white text-sm">View Sales</p>
+                <p className="text-xs text-gray-500 mt-0.5">See every sale and filter by any date — quickly find an order a customer is asking about.</p>
+              </div>
+              <ChevronRight className="w-5 h-5 text-amber-400 flex-shrink-0" />
             </div>
-            {loadingHistory && !history ? (
-              <div className="flex justify-center py-8"><Loader2 className="w-5 h-5 text-amber-400 animate-spin" /></div>
-            ) : !history ? (
-              <p className="text-gray-500 text-sm text-center py-6">No history yet.</p>
-            ) : (
-              <>
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-3 pb-4 mb-4 border-b border-gray-800">
-                  <div>
-                    <p className="text-[10px] text-gray-500">Sales (week)</p>
-                    <p className="text-lg font-extrabold text-white">{history.weekTotal.salesCount}</p>
-                  </div>
-                  <div>
-                    <p className="text-[10px] text-gray-500">Revenue (week)</p>
-                    <p className="text-lg font-extrabold text-white">{formatCurrency(history.weekTotal.revenue)}</p>
-                  </div>
-                  <div>
-                    <p className="text-[10px] text-gray-500">Profit (week)</p>
-                    <p className="text-lg font-extrabold text-green-400">{formatCurrency(history.weekTotal.profit)}</p>
-                  </div>
-                  <div>
-                    <p className="text-[10px] text-gray-500">Failed</p>
-                    <p className="text-lg font-extrabold text-red-400">{history.weekTotal.failedCount}</p>
-                  </div>
-                </div>
-                <div className="space-y-2">
-                  {history.days.map(day => (
-                    <div key={day.date} className="flex items-center justify-between py-2 border-b border-gray-800 last:border-0">
-                      <div>
-                        <p className="font-bold text-white text-sm">{formatDayLabel(day.date)}</p>
-                        <p className="text-[10px] text-gray-500">
-                          {day.salesCount} {day.salesCount === 1 ? 'sale' : 'sales'}
-                          {day.failedCount > 0 ? ` · ${day.failedCount} failed` : ''}
-                        </p>
-                      </div>
-                      <div className="text-right">
-                        <p className="text-sm font-bold text-white">{formatCurrency(day.revenue)}</p>
-                        <p className="text-[10px] font-semibold text-green-400">
-                          Profit: {formatCurrency(day.profit)}
-                        </p>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </>
-            )}
           </div>
-        )}
+        </Link>
 
-        {/* Today's Sales List */}
-        {dailySales?.sales?.length > 0 && (
-          <div>
-            <div className="flex items-center justify-between mb-3">
-              <h2 className="text-lg font-bold text-white">Today&apos;s Sales</h2>
-              <button onClick={fetchDailySales} disabled={loadingDaily} className="flex items-center gap-1 text-xs text-amber-400 font-bold">
-                <RefreshCw className={`w-3 h-3 ${loadingDaily ? 'animate-spin' : ''}`} /> Refresh
-              </button>
-            </div>
-            <div className="space-y-2">
-              {dailySales.sales.map(sale => (
-                <div key={sale._id} className="bg-gray-900 border border-gray-800 rounded-xl p-3 flex items-center justify-between">
-                  <div>
-                    <p className="text-sm font-medium text-white">{sale.network} {sale.capacity}GB</p>
-                    <p className="text-xs text-gray-500">{sale.phoneNumber}</p>
-                    <p className="text-[10px] text-gray-600">{formatDate(sale.createdAt)}</p>
-                  </div>
-                  <div className="text-right">
-                    <p className="text-sm font-bold text-white">{formatCurrency(sale.price)}</p>
-                    <p className="text-[10px] font-semibold text-green-400">Profit: {formatCurrency(sale.storeDetails?.subAgentProfit || 0)}</p>
-                    <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${
-                      sale.status === 'completed' ? 'bg-green-500/10 text-green-400' :
-                      sale.status === 'failed' ? 'bg-red-500/10 text-red-400' :
-                      'bg-yellow-500/10 text-yellow-400'
-                    }`}>{sale.status}</span>
-                  </div>
-                </div>
-              ))}
+        {/* Daily sales & earnings — opens the day-by-day breakdown page */}
+        <Link href="/subagent/history" className="block">
+          <div className="bg-gray-900 border border-gray-800 rounded-xl p-4 hover:border-amber-500/30 transition-colors">
+            <div className="flex items-center gap-3 sm:gap-4">
+              <div className="w-12 h-12 bg-green-500/10 rounded-xl flex items-center justify-center flex-shrink-0">
+                <TrendingUp className="w-6 h-6 text-green-400" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="font-bold text-white text-sm">Daily Sales &amp; Earnings</p>
+                <p className="text-xs text-gray-500 mt-0.5">Your totals and the day-by-day breakdown of sales, revenue and profit.</p>
+              </div>
+              <ChevronRight className="w-5 h-5 text-green-400 flex-shrink-0" />
             </div>
           </div>
-        )}
+        </Link>
 
         {/* Quick actions */}
         <div className="grid grid-cols-3 gap-4">
@@ -450,68 +356,6 @@ export default function SubAgentDashboardPage() {
             </div>
           </div>
         )}
-
-        {/* Recent sales */}
-        <div>
-          <h2 className="text-lg font-bold text-white mb-3">Recent Sales</h2>
-          {sales.length === 0 ? (
-            <div className="bg-gray-900 border border-gray-800 rounded-xl p-8 text-center">
-              <ShoppingBag className="w-10 h-10 text-gray-700 mx-auto mb-3" />
-              <p className="text-gray-500 text-sm">No sales yet. Share your Agent Store link to start selling!</p>
-            </div>
-          ) : (
-            <div className="space-y-2">
-              {sales.map(sale => {
-                const profit = sale.storeDetails?.subAgentProfit || 0;
-                const statusLabel = sale.status === 'completed' ? 'Completed'
-                  : sale.status === 'failed' ? 'Failed'
-                  : sale.status === 'processing' ? 'Processing'
-                  : 'Pending';
-                return (
-                  <div key={sale._id} className="bg-gray-900 border border-gray-800 rounded-xl p-4">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-3">
-                        <div className={`w-2 h-2 rounded-full ${
-                          sale.status === 'completed' ? 'bg-green-400' :
-                          sale.status === 'failed' ? 'bg-red-400' : 'bg-yellow-400'
-                        }`} />
-                        <div>
-                          <p className="text-sm font-medium text-white">
-                            {sale.network} {sale.capacity}GB
-                          </p>
-                          <p className="text-xs text-gray-500">{sale.phoneNumber}</p>
-                        </div>
-                      </div>
-                      <div className="text-right">
-                        <p className="text-sm font-bold text-white">{formatCurrency(sale.price)}</p>
-                        <span className={`inline-block text-[10px] font-semibold px-2 py-0.5 rounded-full ${
-                          sale.status === 'completed' ? 'bg-green-500/10 text-green-400' :
-                          sale.status === 'failed' ? 'bg-red-500/10 text-red-400' :
-                          'bg-yellow-500/10 text-yellow-400'
-                        }`}>{statusLabel}</span>
-                      </div>
-                    </div>
-                    <div className="mt-2 flex items-center justify-between text-xs text-gray-500">
-                      <div className="flex items-center gap-1">
-                        <Clock className="w-3 h-3" />
-                        {formatDate(sale.createdAt)}
-                      </div>
-                      <span className="font-mono">{sale.reference}</span>
-                    </div>
-                    {profit > 0 && (
-                      <div className="mt-1 text-xs text-green-400 font-semibold">
-                        Profit: {formatCurrency(profit)}
-                      </div>
-                    )}
-                    {sale.status === 'failed' && sale.failureReason && (
-                      <p className="mt-1 text-xs text-red-400">{sale.failureReason}</p>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </div>
       </div>
     </div>
   );

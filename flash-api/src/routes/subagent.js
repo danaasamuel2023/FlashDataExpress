@@ -10,7 +10,9 @@ const User = require('../models/User');
 const DataPurchase = require('../models/DataPurchase');
 const Withdrawal = require('../models/Withdrawal');
 const Settings = require('../models/Settings');
+const Announcement = require('../models/Announcement');
 const { formatPhone, generateReference } = require('../utils/helpers');
+const datamartService = require('../services/datamartService');
 
 // Middleware: authenticate sub-agent via JWT (same token system, but verifies they are a sub-agent)
 const subagentAuth = async (req, res, next) => {
@@ -434,26 +436,112 @@ router.get('/my-dashboard', subagentAuth, async (req, res) => {
   }
 });
 
-// GET /api/subagent/my-daily-sales — Sub-agent's today's sales
+// GET /api/subagent/my-daily-sales — Sub-agent's sales for a given day.
+// Defaults to today; pass ?date=YYYY-MM-DD to view any past day (used by the
+// dedicated, date-filterable Sales page).
 router.get('/my-daily-sales', subagentAuth, async (req, res) => {
   try {
-    const todayStart = new Date();
-    todayStart.setHours(0, 0, 0, 0);
+    const dayStart = new Date();
+    dayStart.setHours(0, 0, 0, 0);
+
+    // Optional date filter — only accept a well-formed YYYY-MM-DD in the past.
+    const raw = (req.query.date || '').trim();
+    if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) {
+      const parsed = new Date(raw + 'T00:00:00');
+      if (!Number.isNaN(parsed.getTime())) {
+        parsed.setHours(0, 0, 0, 0);
+        dayStart.setTime(parsed.getTime());
+      }
+    }
+
+    const dayEnd = new Date(dayStart);
+    dayEnd.setDate(dayEnd.getDate() + 1);
 
     const sales = await DataPurchase.find({
       'storeDetails.subAgentId': req.subAgent._id,
-      createdAt: { $gte: todayStart },
-    }).sort({ createdAt: -1 }).limit(200).lean();
+      createdAt: { $gte: dayStart, $lt: dayEnd },
+    }).sort({ createdAt: -1 }).limit(500).lean();
 
     const todayProfit = sales.reduce((sum, s) => sum + (s.storeDetails?.subAgentProfit || 0), 0);
     const todayRevenue = sales.reduce((sum, s) => sum + (s.price || 0), 0);
 
     res.json({
       status: 'success',
-      data: { sales, todayProfit, todayRevenue, count: sales.length },
+      data: {
+        sales,
+        todayProfit,
+        todayRevenue,
+        count: sales.length,
+        date: dayStart.toISOString().slice(0, 10),
+      },
     });
   } catch (err) {
     console.error('SubAgent daily-sales error:', err.message);
+    res.status(500).json({ status: 'error', message: 'Something went wrong. Please try again.' });
+  }
+});
+
+// GET /api/subagent/delivery-tracker — Sub-agent delivery system status.
+// Mirrors /api/purchase/delivery-tracker but scopes "your pending" to orders
+// placed through THIS sub-agent's store, and reuses the same system-wide
+// scanner state + latest-delivered signal.
+router.get('/delivery-tracker', subagentAuth, async (req, res) => {
+  try {
+    const yourPending = await DataPurchase.countDocuments({
+      'storeDetails.subAgentId': req.subAgent._id,
+      status: { $in: ['pending', 'processing'] },
+    });
+
+    // System-wide most recent delivered order — non-PII (tracking id + timing).
+    const lastOrder = await DataPurchase.findOne({ status: 'completed' })
+      .sort({ createdAt: -1 })
+      .select('trackingId createdAt completedAt updatedAt')
+      .lean();
+
+    const latestDelivered = lastOrder
+      ? {
+          trackingId: lastOrder.trackingId || null,
+          placedAt: lastOrder.createdAt,
+          deliveredAt: lastOrder.completedAt || lastOrder.updatedAt || null,
+          exactDelivery: !!lastOrder.completedAt,
+        }
+      : null;
+
+    let tracker = null;
+    try {
+      tracker = await datamartService.getDeliveryTracker();
+    } catch (err) {
+      return res.json({
+        status: 'success',
+        data: {
+          scanner: { state: 'unknown', active: false, waiting: false, waitSeconds: 0, pendingBatches: 0 },
+          message: 'Live delivery status is temporarily unavailable.',
+          lastDelivered: null,
+          latestDelivered,
+          checkingNow: null,
+          yourPending,
+          updatedAt: new Date().toISOString(),
+        },
+      });
+    }
+
+    const ld = tracker?.lastDelivered;
+    res.json({
+      status: 'success',
+      data: {
+        scanner: tracker?.scanner || { state: 'unknown', active: false, waiting: false, waitSeconds: 0, pendingBatches: 0 },
+        message: tracker?.message || null,
+        lastDelivered: ld?.deliveredAt
+          ? { deliveredAt: ld.deliveredAt, placedAt: ld.placedAt || null }
+          : null,
+        latestDelivered,
+        checkingNow: tracker?.checkingNow?.batchNumber ? { active: true } : null,
+        yourPending,
+        updatedAt: new Date().toISOString(),
+      },
+    });
+  } catch (err) {
+    console.error('SubAgent delivery-tracker error:', err.message);
     res.status(500).json({ status: 'error', message: 'Something went wrong. Please try again.' });
   }
 });
@@ -515,6 +603,24 @@ router.get('/my-daily-history', subagentAuth, async (req, res) => {
     });
   } catch (err) {
     console.error('SubAgent daily-history error:', err.message);
+    res.status(500).json({ status: 'error', message: 'Something went wrong. Please try again.' });
+  }
+});
+
+// GET /api/subagent/announcements — active announcements for sub-agents to copy & share
+router.get('/announcements', subagentAuth, async (req, res) => {
+  try {
+    const announcements = await Announcement.find({
+      isActive: true,
+      audience: { $in: ['subagents', 'all'] },
+    })
+      .sort({ pinned: -1, createdAt: -1 })
+      .limit(50)
+      .select('title message pinned createdAt')
+      .lean();
+    res.json({ status: 'success', data: announcements });
+  } catch (err) {
+    console.error('SubAgent announcements error:', err.message);
     res.status(500).json({ status: 'error', message: 'Something went wrong. Please try again.' });
   }
 });

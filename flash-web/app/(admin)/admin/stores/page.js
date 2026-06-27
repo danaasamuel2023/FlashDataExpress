@@ -1,6 +1,6 @@
 'use client';
 import { useState, useEffect } from 'react';
-import { Store, ExternalLink, Loader2, RefreshCw, ShoppingBag, TrendingUp, Wallet, X, CalendarDays, DollarSign } from 'lucide-react';
+import { Store, ExternalLink, Loader2, RefreshCw, ShoppingBag, TrendingUp, Wallet, X, CalendarDays, DollarSign, Search } from 'lucide-react';
 import toast from 'react-hot-toast';
 import Card from '@/components/ui/Card';
 import { formatCurrency, formatDate } from '@/lib/constants';
@@ -12,6 +12,7 @@ export default function AdminStoresPage() {
   const [refreshing, setRefreshing] = useState(false);
   const [selectedStore, setSelectedStore] = useState(null); // { store, sales, todayRevenue, todayProfit, count }
   const [loadingDetail, setLoadingDetail] = useState(false);
+  const [query, setQuery] = useState('');
 
   useEffect(() => {
     fetchStores();
@@ -55,6 +56,17 @@ export default function AdminStoresPage() {
   const activeCount = stores.filter(s => s.isActive).length;
   const todayRevenue = stores.reduce((s, st) => s + (st.todayRevenue || 0), 0);
   const todayProfit = stores.reduce((s, st) => s + (st.todayProfit || 0), 0);
+
+  const q = query.trim().toLowerCase();
+  const filteredStores = q
+    ? stores.filter(s =>
+        (s.storeName || '').toLowerCase().includes(q) ||
+        (s.storeSlug || '').toLowerCase().includes(q) ||
+        (s.agent?.name || '').toLowerCase().includes(q) ||
+        (s.agent?.email || '').toLowerCase().includes(q) ||
+        (s.agent?.phoneNumber || '').toLowerCase().includes(q)
+      )
+    : stores;
 
   return (
     <div className="space-y-6">
@@ -121,12 +133,38 @@ export default function AdminStoresPage() {
         </Card>
       </div>
 
+      {/* Search */}
+      <div className="relative">
+        <Search className="w-4 h-4 text-text-muted absolute left-3 top-1/2 -translate-y-1/2" />
+        <input
+          type="text"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="Search by store name, slug, agent name, email or phone…"
+          className="w-full bg-white/[0.04] border border-white/[0.08] rounded-xl pl-9 pr-9 py-2.5 text-sm text-white placeholder:text-text-muted focus:outline-none focus:border-primary/50"
+        />
+        {query && (
+          <button
+            onClick={() => setQuery('')}
+            className="absolute right-3 top-1/2 -translate-y-1/2 text-text-muted hover:text-white"
+            aria-label="Clear search"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        )}
+      </div>
+
       {/* Stores list */}
       <Card>
         {stores.length === 0 ? (
           <p className="text-text-muted text-sm text-center py-8">No agent stores activated yet.</p>
+        ) : filteredStores.length === 0 ? (
+          <p className="text-text-muted text-sm text-center py-8">No stores match &ldquo;{query}&rdquo;.</p>
         ) : (
           <div className="overflow-x-auto">
+            {q && (
+              <p className="text-[11px] text-text-muted mb-2">{filteredStores.length} of {stores.length} stores</p>
+            )}
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-white/[0.04]">
@@ -140,7 +178,7 @@ export default function AdminStoresPage() {
                 </tr>
               </thead>
               <tbody>
-                {stores.map((s) => (
+                {filteredStores.map((s) => (
                   <tr
                     key={s._id}
                     onClick={() => openStoreDetail(s._id)}

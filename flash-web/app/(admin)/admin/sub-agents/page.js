@@ -1,6 +1,6 @@
 'use client';
 import { useState, useEffect } from 'react';
-import { UserPlus, ExternalLink, Loader2, RefreshCw, ShoppingBag, TrendingUp, X, CalendarDays, DollarSign, Users } from 'lucide-react';
+import { UserPlus, ExternalLink, Loader2, RefreshCw, ShoppingBag, TrendingUp, X, CalendarDays, DollarSign, Users, Search } from 'lucide-react';
 import toast from 'react-hot-toast';
 import Card from '@/components/ui/Card';
 import { formatCurrency, formatDate } from '@/lib/constants';
@@ -12,6 +12,7 @@ export default function AdminSubAgentsPage() {
   const [refreshing, setRefreshing] = useState(false);
   const [selected, setSelected] = useState(null); // { subAgent, sales, todayRevenue, todayProfit, count }
   const [loadingDetail, setLoadingDetail] = useState(false);
+  const [query, setQuery] = useState('');
 
   useEffect(() => {
     fetchSubAgents();
@@ -55,6 +56,17 @@ export default function AdminSubAgentsPage() {
   const activeCount = subAgents.filter(s => s.isActive).length;
   const todayRevenue = subAgents.reduce((s, st) => s + (st.todayRevenue || 0), 0);
   const todayProfit = subAgents.reduce((s, st) => s + (st.todayProfit || 0), 0);
+
+  const q = query.trim().toLowerCase();
+  const filteredSubAgents = q
+    ? subAgents.filter(s =>
+        (s.storeName || '').toLowerCase().includes(q) ||
+        (s.storeSlug || '').toLowerCase().includes(q) ||
+        (s.parentStoreName || '').toLowerCase().includes(q) ||
+        (s.parentAgent?.name || '').toLowerCase().includes(q) ||
+        (s.parentAgent?.email || '').toLowerCase().includes(q)
+      )
+    : subAgents;
 
   return (
     <div className="space-y-6">
@@ -123,12 +135,38 @@ export default function AdminSubAgentsPage() {
         </Card>
       </div>
 
+      {/* Search */}
+      <div className="relative">
+        <Search className="w-4 h-4 text-text-muted absolute left-3 top-1/2 -translate-y-1/2" />
+        <input
+          type="text"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="Search by sub-agent shop, slug, or parent agent…"
+          className="w-full bg-white/[0.04] border border-white/[0.08] rounded-xl pl-9 pr-9 py-2.5 text-sm text-white placeholder:text-text-muted focus:outline-none focus:border-primary/50"
+        />
+        {query && (
+          <button
+            onClick={() => setQuery('')}
+            className="absolute right-3 top-1/2 -translate-y-1/2 text-text-muted hover:text-white"
+            aria-label="Clear search"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        )}
+      </div>
+
       {/* Sub-agents list */}
       <Card>
         {subAgents.length === 0 ? (
           <p className="text-text-muted text-sm text-center py-8">No sub-agents yet.</p>
+        ) : filteredSubAgents.length === 0 ? (
+          <p className="text-text-muted text-sm text-center py-8">No sub-agents match &ldquo;{query}&rdquo;.</p>
         ) : (
           <div className="overflow-x-auto">
+            {q && (
+              <p className="text-[11px] text-text-muted mb-2">{filteredSubAgents.length} of {subAgents.length} sub-agents</p>
+            )}
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-white/[0.04]">
@@ -142,7 +180,7 @@ export default function AdminSubAgentsPage() {
                 </tr>
               </thead>
               <tbody>
-                {subAgents.map((s) => (
+                {filteredSubAgents.map((s) => (
                   <tr
                     key={s._id}
                     onClick={() => openDetail(s._id)}

@@ -1,22 +1,14 @@
 'use client';
 import { useState, useEffect } from 'react';
-import { Store, TrendingUp, Wallet, ShoppingBag, ExternalLink, Loader2, Copy, Check, Users, MessageCircle, Phone, Clock, DollarSign, CalendarDays, RefreshCw, ChevronDown, ChevronUp, PlayCircle } from 'lucide-react';
+import { Store, TrendingUp, Wallet, ShoppingBag, ExternalLink, Loader2, Copy, Check, Users, MessageCircle, Phone, DollarSign, CalendarDays } from 'lucide-react';
 import Link from 'next/link';
 import toast from 'react-hot-toast';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
-import { formatCurrency, formatDate } from '@/lib/constants';
+import { formatCurrency } from '@/lib/constants';
 import api from '@/lib/api';
-
-function formatDayLabel(dateStr) {
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const d = new Date(dateStr + 'T00:00:00');
-  const diff = Math.round((today - d) / (1000 * 60 * 60 * 24));
-  if (diff === 0) return 'Today';
-  if (diff === 1) return 'Yesterday';
-  return d.toLocaleDateString(undefined, { weekday: 'long', month: 'short', day: 'numeric' });
-}
+import AnnouncementBoard from '@/components/shared/AnnouncementBoard';
+import StoreTutorial from '@/components/shared/StoreTutorial';
 
 export default function StoreDashboardPage() {
   const [store, setStore] = useState(null);
@@ -24,10 +16,6 @@ export default function StoreDashboardPage() {
   const [copied, setCopied] = useState(false);
   const [agentSupport, setAgentSupport] = useState({ phone: '', whatsapp: '' });
   const [dailySales, setDailySales] = useState(null);
-  const [loadingDaily, setLoadingDaily] = useState(false);
-  const [history, setHistory] = useState(null);
-  const [historyOpen, setHistoryOpen] = useState(false);
-  const [loadingHistory, setLoadingHistory] = useState(false);
 
   useEffect(() => {
     fetchStore();
@@ -38,33 +26,12 @@ export default function StoreDashboardPage() {
   }, []);
 
   const fetchDailySales = async () => {
-    setLoadingDaily(true);
     try {
       const res = await api.get('/store/daily-sales');
       setDailySales(res.data.data);
     } catch {
       // ignore if no store yet
-    } finally {
-      setLoadingDaily(false);
     }
-  };
-
-  const fetchHistory = async () => {
-    setLoadingHistory(true);
-    try {
-      const res = await api.get('/store/daily-history?days=7');
-      setHistory(res.data.data);
-    } catch {
-      // ignore
-    } finally {
-      setLoadingHistory(false);
-    }
-  };
-
-  const toggleHistory = () => {
-    const next = !historyOpen;
-    setHistoryOpen(next);
-    if (next && !history) fetchHistory();
   };
 
   const fetchStore = async () => {
@@ -115,25 +82,8 @@ export default function StoreDashboardPage() {
           </Link>
         </div>
 
-        {/* How the Agent Store works — tutorial video */}
-        <Card>
-          <div className="flex items-center gap-2 mb-3">
-            <PlayCircle className="w-5 h-5 text-primary" />
-            <h2 className="font-bold text-white">How the Agent Store works</h2>
-          </div>
-          <p className="text-xs text-text-muted mb-3">
-            Watch this short walkthrough to see how to set up your store, manage prices, and earn from every sale.
-          </p>
-          <div className="relative w-full aspect-video rounded-xl overflow-hidden bg-black">
-            <iframe
-              src="https://www.youtube.com/embed/Q9IBlTiPLCA"
-              title="How the Agent Store works"
-              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-              allowFullScreen
-              className="absolute inset-0 w-full h-full"
-            />
-          </div>
-        </Card>
+        {/* How the Agent Store works — animated walkthrough */}
+        <StoreTutorial />
       </div>
     );
   }
@@ -158,26 +108,11 @@ export default function StoreDashboardPage() {
         </div>
       </div>
 
-      {/* Tutorial video — how the store works */}
-      <a
-        href="https://whatsapp.com/channel/0029VbByiD37DAWv3LzCXM42/653"
-        target="_blank"
-        rel="noopener noreferrer"
-        className="block"
-      >
-        <Card hover className="!border-primary/20 bg-gradient-to-r from-primary/10 to-primary/5">
-          <div className="flex items-center gap-3 sm:gap-4">
-            <div className="w-12 h-12 bg-primary/20 rounded-xl flex items-center justify-center flex-shrink-0">
-              <PlayCircle className="w-6 h-6 text-primary" />
-            </div>
-            <div className="flex-1 min-w-0">
-              <p className="font-bold text-white text-sm">Watch: How the Agent Store works</p>
-              <p className="text-xs text-text-muted mt-0.5">Quick video walkthrough on our WhatsApp channel.</p>
-            </div>
-            <ExternalLink className="w-4 h-4 text-primary flex-shrink-0" />
-          </div>
-        </Card>
-      </a>
+      {/* Announcements — admin updates agents can copy & forward */}
+      <AnnouncementBoard endpoint="/store/announcements" />
+
+      {/* How the Agent Store works — animated walkthrough */}
+      <StoreTutorial />
 
       {/* Today's stats — reset at midnight */}
       <div>
@@ -234,120 +169,21 @@ export default function StoreDashboardPage() {
         </div>
       </div>
 
-      {/* Lifetime totals — Total Sales / Total Earnings open the daily breakdown */}
-      <div>
-        <p className="text-xs font-bold text-text-muted uppercase tracking-wider mb-2">All Time</p>
-        <div className="grid grid-cols-3 gap-4">
-          <button onClick={toggleHistory} className="text-left">
-            <Card hover>
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 bg-primary/10 rounded-xl flex items-center justify-center">
-                  <ShoppingBag className="w-5 h-5 text-primary" />
-                </div>
-                <div className="flex-1">
-                  <p className="text-lg font-extrabold text-white">{store.totalSales || 0}</p>
-                  <p className="text-xs text-text-muted flex items-center gap-1">
-                    Total Sales <CalendarDays className="w-3 h-3" />
-                  </p>
-                </div>
-                {historyOpen ? <ChevronUp className="w-4 h-4 text-text-muted" /> : <ChevronDown className="w-4 h-4 text-text-muted" />}
-              </div>
-            </Card>
-          </button>
-          <button onClick={toggleHistory} className="text-left">
-            <Card hover>
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 bg-success/10 rounded-xl flex items-center justify-center">
-                  <TrendingUp className="w-5 h-5 text-success" />
-                </div>
-                <div className="flex-1">
-                  <p className="text-lg font-extrabold text-white">{formatCurrency(store.totalEarnings || 0)}</p>
-                  <p className="text-xs text-text-muted flex items-center gap-1">
-                    Total Earnings <CalendarDays className="w-3 h-3" />
-                  </p>
-                </div>
-                {historyOpen ? <ChevronUp className="w-4 h-4 text-text-muted" /> : <ChevronDown className="w-4 h-4 text-text-muted" />}
-              </div>
-            </Card>
-          </button>
-          <Card>
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 bg-accent/10 rounded-xl flex items-center justify-center">
-                <Wallet className="w-5 h-5 text-accent" />
-              </div>
-              <div>
-                <p className="text-lg font-extrabold text-white">{formatCurrency(store.pendingBalance || 0)}</p>
-                <p className="text-xs text-text-muted">Pending Balance</p>
-              </div>
+      {/* All Time earnings & history — opens dedicated page */}
+      <Link href="/store/history" className="block">
+        <Card hover>
+          <div className="flex items-center gap-3 sm:gap-4">
+            <div className="w-12 h-12 bg-success/10 rounded-xl flex items-center justify-center flex-shrink-0">
+              <TrendingUp className="w-6 h-6 text-success" />
             </div>
-          </Card>
-        </div>
-        <p className="text-[10px] text-text-muted mt-2">
-          Click <span className="font-semibold">Total Sales</span> or <span className="font-semibold">Total Earnings</span> to see a day-by-day breakdown for the week.
-        </p>
-      </div>
-
-      {/* 7-day breakdown panel */}
-      {historyOpen && (
-        <Card>
-          <div className="flex items-center justify-between mb-4">
-            <div>
-              <h2 className="font-bold text-white">Daily Sales History</h2>
-              <p className="text-xs text-text-muted mt-0.5">Last 7 days &middot; resets at midnight</p>
+            <div className="flex-1 min-w-0">
+              <p className="font-bold text-white text-sm">Earnings &amp; History</p>
+              <p className="text-xs text-text-muted mt-0.5">Total sales, earnings, pending balance and the day-by-day breakdown.</p>
             </div>
-            <button onClick={fetchHistory} disabled={loadingHistory} className="flex items-center gap-1.5 text-xs font-bold text-primary hover:text-primary/80 disabled:opacity-50">
-              <RefreshCw className={`w-3.5 h-3.5 ${loadingHistory ? 'animate-spin' : ''}`} /> Refresh
-            </button>
+            <ExternalLink className="w-4 h-4 text-success flex-shrink-0" />
           </div>
-          {loadingHistory && !history ? (
-            <div className="flex justify-center py-8"><Loader2 className="w-5 h-5 text-primary animate-spin" /></div>
-          ) : !history ? (
-            <p className="text-text-muted text-sm text-center py-6">No history yet.</p>
-          ) : (
-            <>
-              {/* Week summary */}
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-3 pb-4 mb-4 border-b border-white/[0.04]">
-                <div>
-                  <p className="text-[10px] text-text-muted">Sales (week)</p>
-                  <p className="text-lg font-extrabold text-white">{history.weekTotal.salesCount}</p>
-                </div>
-                <div>
-                  <p className="text-[10px] text-text-muted">Revenue (week)</p>
-                  <p className="text-lg font-extrabold text-white">{formatCurrency(history.weekTotal.revenue)}</p>
-                </div>
-                <div>
-                  <p className="text-[10px] text-text-muted">Profit (week)</p>
-                  <p className="text-lg font-extrabold text-success">{formatCurrency(history.weekTotal.profit)}</p>
-                </div>
-                <div>
-                  <p className="text-[10px] text-text-muted">Failed</p>
-                  <p className="text-lg font-extrabold text-error">{history.weekTotal.failedCount}</p>
-                </div>
-              </div>
-              {/* Daily rows */}
-              <div className="space-y-2">
-                {history.days.map(day => (
-                  <div key={day.date} className="flex items-center justify-between py-2 border-b border-white/[0.04] last:border-0">
-                    <div>
-                      <p className="font-bold text-white text-sm">{formatDayLabel(day.date)}</p>
-                      <p className="text-[10px] text-text-muted">
-                        {day.salesCount} {day.salesCount === 1 ? 'sale' : 'sales'}
-                        {day.failedCount > 0 ? ` · ${day.failedCount} failed` : ''}
-                      </p>
-                    </div>
-                    <div className="text-right">
-                      <p className="text-sm font-bold text-white">{formatCurrency(day.revenue)}</p>
-                      <p className="text-[10px] font-semibold text-success">
-                        Profit: {formatCurrency(day.profit)}
-                      </p>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </>
-          )}
         </Card>
-      )}
+      </Link>
 
       {/* Today's Sales — opens the full filterable Sales page */}
       {store && (
@@ -403,33 +239,6 @@ export default function StoreDashboardPage() {
           </div>
         </Card>
       )}
-
-      {/* How the Agent Store works — tutorial video */}
-      <Card>
-        <div className="flex items-center justify-between mb-3">
-          <div className="flex items-center gap-2">
-            <PlayCircle className="w-5 h-5 text-primary" />
-            <h2 className="font-bold text-white">How the Agent Store works</h2>
-          </div>
-          <a
-            href="https://youtu.be/Q9IBlTiPLCA"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="inline-flex items-center gap-1 text-xs font-bold text-primary hover:text-primary/80"
-          >
-            Open on YouTube <ExternalLink className="w-3 h-3" />
-          </a>
-        </div>
-        <div className="relative w-full aspect-video rounded-xl overflow-hidden bg-black">
-          <iframe
-            src="https://www.youtube.com/embed/Q9IBlTiPLCA"
-            title="How the Agent Store works"
-            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-            allowFullScreen
-            className="absolute inset-0 w-full h-full"
-          />
-        </div>
-      </Card>
 
       {/* Quick links */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
