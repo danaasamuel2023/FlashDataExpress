@@ -29,6 +29,7 @@ router.get('/packages', async (req, res) => {
   try {
     const settings = await Settings.getSettings();
     const sellingPrices = settings?.pricing?.sellingPrices || {};
+    const apiPrices = settings?.pricing?.apiPrices || {};
     const outOfStock = new Set(settings?.outOfStockNetworks || []);
 
     const requested = req.query.network ? resolveNetwork(req.query.network) : null;
@@ -37,7 +38,9 @@ router.get('/packages', async (req, res) => {
     const result = [];
     for (const net of networks) {
       const networkPrices = sellingPrices[net] || {};
-      for (const [capacity, price] of Object.entries(networkPrices)) {
+      for (const [capacity, sellPrice] of Object.entries(networkPrices)) {
+        // Effective API price = override if set, else regular selling price.
+        const price = (apiPrices[net] || {})[capacity] || sellPrice;
         if (price > 0) {
           result.push({
             network: net,
@@ -90,6 +93,7 @@ router.post('/buy', ordersPaused, async (req, res) => {
 
     const settings = await Settings.getSettings();
     const sellingPrices = settings?.pricing?.sellingPrices || {};
+    const apiPrices = settings?.pricing?.apiPrices || {};
     const basePrices = settings?.pricing?.basePrices || {};
     const outOfStock = new Set(settings?.outOfStockNetworks || []);
 
@@ -97,7 +101,9 @@ router.post('/buy', ordersPaused, async (req, res) => {
       return res.status(400).json({ status: 'error', message: `${network} is currently out of stock` });
     }
 
-    const price = (sellingPrices[network] || {})[String(capacity)];
+    // API price override falls back to the regular selling price when unset.
+    const price = (apiPrices[network] || {})[String(capacity)]
+      || (sellingPrices[network] || {})[String(capacity)];
     const costPrice = (basePrices[network] || {})[String(capacity)] || 0;
     if (!price) {
       return res.status(400).json({ status: 'error', message: 'Package not available' });

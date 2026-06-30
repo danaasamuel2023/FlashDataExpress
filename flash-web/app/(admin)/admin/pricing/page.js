@@ -1,6 +1,6 @@
 'use client';
 import { useState, useEffect } from 'react';
-import { DollarSign, RefreshCw, Save, Loader2, Plus, Trash2, Users, UserCheck } from 'lucide-react';
+import { DollarSign, RefreshCw, Save, Loader2, Plus, Trash2, Users, UserCheck, Globe, Code } from 'lucide-react';
 import toast from 'react-hot-toast';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
@@ -19,10 +19,14 @@ const PRICE_TIERS = [
   { id: 'sellingPrices', label: 'User Prices', description: 'Retail price regular users pay' },
   { id: 'agentPrices', label: 'Agent Prices', description: 'Platform cost charged to parent agents' },
   { id: 'subAgentPrices', label: 'Sub-Shop Platform Cost', description: 'Platform cost charged to the agent on sub-shop sales — auto-mirrors Agent Prices. NOT the sub-agent’s base price (that is the parent agent’s selling price).' },
+  { id: 'guestPrices', label: 'Guest Prices', description: 'Price for guest (no-account) quick-buy checkout. Cannot be lower than the User Price — leave a bundle blank to charge the User Price.' },
+  { id: 'apiPrices', label: 'API Prices', description: 'Price charged to developer API accounts. Leave a bundle blank to charge the User Price.' },
 ];
 
+const EMPTY_PRICING = { basePrices: {}, sellingPrices: {}, agentPrices: {}, subAgentPrices: {}, guestPrices: {}, apiPrices: {} };
+
 export default function AdminPricingPage() {
-  const [pricing, setPricing] = useState({ basePrices: {}, sellingPrices: {}, agentPrices: {}, subAgentPrices: {} });
+  const [pricing, setPricing] = useState(EMPTY_PRICING);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [syncing, setSyncing] = useState(false);
@@ -40,7 +44,7 @@ export default function AdminPricingPage() {
   const fetchPricing = async () => {
     try {
       const res = await api.get('/admin/pricing');
-      setPricing(res.data.data || { basePrices: {}, sellingPrices: {}, agentPrices: {}, subAgentPrices: {} });
+      setPricing({ ...EMPTY_PRICING, ...(res.data.data || {}) });
     } catch {
       toast.error('Failed to load pricing');
     } finally {
@@ -95,6 +99,8 @@ export default function AdminPricingPage() {
         basePrices: pricing.basePrices,
         agentPrices: pricing.agentPrices,
         subAgentPrices: pricing.subAgentPrices,
+        guestPrices: pricing.guestPrices,
+        apiPrices: pricing.apiPrices,
       });
       toast.success('Pricing saved!');
     } catch (err) {
@@ -161,16 +167,22 @@ export default function AdminPricingPage() {
       const newSelling = { ...(prev.sellingPrices[selectedNetwork] || {}) };
       const newAgent = { ...(prev.agentPrices?.[selectedNetwork] || {}) };
       const newSubAgent = { ...(prev.subAgentPrices?.[selectedNetwork] || {}) };
+      const newGuest = { ...(prev.guestPrices?.[selectedNetwork] || {}) };
+      const newApi = { ...(prev.apiPrices?.[selectedNetwork] || {}) };
       delete newBase[capacity];
       delete newSelling[capacity];
       delete newAgent[capacity];
       delete newSubAgent[capacity];
+      delete newGuest[capacity];
+      delete newApi[capacity];
       return {
         ...prev,
         basePrices: { ...prev.basePrices, [selectedNetwork]: newBase },
         sellingPrices: { ...prev.sellingPrices, [selectedNetwork]: newSelling },
         agentPrices: { ...prev.agentPrices, [selectedNetwork]: newAgent },
         subAgentPrices: { ...prev.subAgentPrices, [selectedNetwork]: newSubAgent },
+        guestPrices: { ...prev.guestPrices, [selectedNetwork]: newGuest },
+        apiPrices: { ...prev.apiPrices, [selectedNetwork]: newApi },
       };
     });
     toast.success(`${capacity}GB bundle removed. Click Save to apply.`);
@@ -178,6 +190,9 @@ export default function AdminPricingPage() {
 
   const basePrices = pricing.basePrices[selectedNetwork] || {};
   const tierPrices = (pricing[selectedTier] || {})[selectedNetwork] || {};
+  // Guest/API tiers are optional overrides — a blank cell charges the User Price.
+  const isOverrideTier = selectedTier === 'guestPrices' || selectedTier === 'apiPrices';
+  const sellingForNetwork = pricing.sellingPrices[selectedNetwork] || {};
 
   return (
     <div className="space-y-6">
@@ -217,6 +232,8 @@ export default function AdminPricingPage() {
             {tier.id === 'sellingPrices' && <DollarSign className="w-4 h-4" />}
             {tier.id === 'agentPrices' && <Users className="w-4 h-4" />}
             {tier.id === 'subAgentPrices' && <UserCheck className="w-4 h-4" />}
+            {tier.id === 'guestPrices' && <Globe className="w-4 h-4" />}
+            {tier.id === 'apiPrices' && <Code className="w-4 h-4" />}
             {tier.label}
           </button>
         ))}
@@ -262,7 +279,10 @@ export default function AdminPricingPage() {
               {Object.entries({ ...basePrices, ...tierPrices }).map(([capacity]) => {
                 const cost = basePrices[capacity] || 0;
                 const selling = tierPrices[capacity] || 0;
-                const margin = selling - cost;
+                // On override tiers, a blank cell falls back to the User Price.
+                const fallback = isOverrideTier ? (sellingForNetwork[capacity] || 0) : 0;
+                const effective = selling || fallback;
+                const margin = effective - cost;
                 return (
                   <tr key={capacity} className="border-b border-white/[0.04] last:border-0">
                     <td className="px-5 py-3 font-bold text-sm text-white">{capacity}GB</td>
@@ -292,6 +312,7 @@ export default function AdminPricingPage() {
                         type="number"
                         step="0.01"
                         value={selling || ''}
+                        placeholder={isOverrideTier && fallback ? `${fallback} (User)` : ''}
                         onChange={(e) => handleTierPriceChange(selectedTier, selectedNetwork, capacity, e.target.value)}
                         className="w-24 px-3 py-1.5 rounded-lg border border-white/10 text-sm font-semibold text-text focus:border-primary focus:ring-1 focus:ring-primary/20 outline-none"
                       />

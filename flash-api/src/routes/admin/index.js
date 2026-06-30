@@ -932,6 +932,8 @@ router.get('/pricing', async (req, res) => {
         sellingPrices: settings?.pricing?.sellingPrices || {},
         agentPrices: settings?.pricing?.agentPrices || {},
         subAgentPrices: settings?.pricing?.subAgentPrices || {},
+        guestPrices: settings?.pricing?.guestPrices || {},
+        apiPrices: settings?.pricing?.apiPrices || {},
       },
     });
   } catch (err) {
@@ -943,7 +945,7 @@ router.get('/pricing', async (req, res) => {
 // PUT /api/admin/pricing
 router.put('/pricing', async (req, res) => {
   try {
-    const { sellingPrices, basePrices, agentPrices, subAgentPrices } = req.body;
+    const { sellingPrices, basePrices, agentPrices, subAgentPrices, guestPrices, apiPrices } = req.body;
 
     const current = await Settings.getSettings();
     const cur = current.pricing || {};
@@ -964,8 +966,37 @@ router.put('/pricing', async (req, res) => {
       return out;
     };
 
+    // Guest / API tiers are sparse overrides: only SKUs the admin explicitly
+    // priced (> 0) are stored. Anything else is dropped so it falls back to the
+    // selling price at order time. Each stored value is floored at `floorMap`
+    // (e.g. base cost, or the selling price) so the tier never undercuts it.
+    const sparseOverride = (tier, floorMap) => {
+      const out = {};
+      for (const net of Object.keys(tier || {})) {
+        for (const cap of Object.keys(tier[net] || {})) {
+          const v = Number(tier[net][cap]);
+          if (!v || v <= 0) continue;
+          const floor = Math.max(
+            Number((base[net] || {})[cap]) || 0,
+            Number((floorMap?.[net] || {})[cap]) || 0
+          );
+          if (!out[net]) out[net] = {};
+          out[net][cap] = v < floor ? floor : v;
+        }
+      }
+      return out;
+    };
+
+    // The effective User price after this save — guest checkout must never be
+    // cheaper than what regular users pay, so the guest tier is floored at it.
+    const effectiveSelling = (sellingPrices ? floorAtBase(sellingPrices) : null) || cur.sellingPrices || {};
+
     const updates = {};
     if (basePrices) updates['pricing.basePrices'] = basePrices;
+    // Guests pay at least the User price; API accounts only need to clear base
+    // cost (admins may give developers/resellers a lower wholesale rate).
+    if (guestPrices) updates['pricing.guestPrices'] = sparseOverride(guestPrices, effectiveSelling);
+    if (apiPrices) updates['pricing.apiPrices'] = sparseOverride(apiPrices, null);
 
     // Agent price is exactly what the admin enters — only floored at the
     // DataMart cost so we never sell below what we pay. No imposed markup.
@@ -1013,9 +1044,13 @@ router.post('/pricing/sync', async (req, res) => {
     const existingSellingPrices = settings.pricing && settings.pricing.sellingPrices || {};
     const existingAgentPrices = settings.pricing && settings.pricing.agentPrices || {};
     const existingSubAgentPrices = settings.pricing && settings.pricing.subAgentPrices || {};
+    const existingGuestPrices = settings.pricing && settings.pricing.guestPrices || {};
+    const existingApiPrices = settings.pricing && settings.pricing.apiPrices || {};
     const sellingPrices = JSON.parse(JSON.stringify(existingSellingPrices));
     const agentPrices = JSON.parse(JSON.stringify(existingAgentPrices));
     const subAgentPrices = JSON.parse(JSON.stringify(existingSubAgentPrices));
+    const guestPrices = JSON.parse(JSON.stringify(existingGuestPrices));
+    const apiPrices = JSON.parse(JSON.stringify(existingApiPrices));
 
     for (const network of Object.keys(basePrices)) {
       if (!sellingPrices[network]) sellingPrices[network] = {};
@@ -1044,12 +1079,23 @@ router.post('/pricing/sync', async (req, res) => {
         if (agentPrices[network][capacity] < b) agentPrices[network][capacity] = b;
         if (sellingPrices[network][capacity] < b) sellingPrices[network][capacity] = b;
         subAgentPrices[network][capacity] = agentPrices[network][capacity];
+        // Guest/API tiers are sparse overrides — only re-floor entries that
+        // already exist; never auto-create them (absence = falls back to selling).
+        // Guest is floored at the User price (never cheaper than regular users);
+        // API only needs to clear base cost.
+        if (guestPrices[network] && guestPrices[network][capacity] != null) {
+          const guestFloor = Math.max(b, sellingPrices[network][capacity] || 0);
+          if (guestPrices[network][capacity] < guestFloor) guestPrices[network][capacity] = guestFloor;
+        }
+        if (apiPrices[network] && apiPrices[network][capacity] != null && apiPrices[network][capacity] < b) {
+          apiPrices[network][capacity] = b;
+        }
       }
     }
 
     await Settings.findOneAndUpdate(
       { _id: 'app_settings' },
-      { $set: { 'pricing.basePrices': basePrices, 'pricing.sellingPrices': sellingPrices, 'pricing.agentPrices': agentPrices, 'pricing.subAgentPrices': subAgentPrices, 'datamart.isConnected': true, 'pricing.lastFetchedAt': new Date() } },
+      { $set: { 'pricing.basePrices': basePrices, 'pricing.sellingPrices': sellingPrices, 'pricing.agentPrices': agentPrices, 'pricing.subAgentPrices': subAgentPrices, 'pricing.guestPrices': guestPrices, 'pricing.apiPrices': apiPrices, 'datamart.isConnected': true, 'pricing.lastFetchedAt': new Date() } },
       { upsert: true }
     );
 

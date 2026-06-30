@@ -71,8 +71,12 @@ router.post('/guest-buy', ordersPaused, async (req, res) => {
 
     const settings = await Settings.getSettings();
     const sellingPrices = settings?.pricing?.sellingPrices || {};
-    const networkPrices = sellingPrices[network] || {};
-    const price = networkPrices[String(capacity)];
+    const guestPrices = settings?.pricing?.guestPrices || {};
+    const sellingPrice = (sellingPrices[network] || {})[String(capacity)];
+    const guestOverride = (guestPrices[network] || {})[String(capacity)];
+    // Guest price override falls back to the regular selling price when unset,
+    // and is never allowed to undercut it — guests pay at least the User price.
+    const price = Math.max(guestOverride || 0, sellingPrice || 0);
 
     if (!price) {
       return res.status(400).json({ status: 'error', message: 'Package not available' });

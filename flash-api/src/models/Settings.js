@@ -35,6 +35,10 @@ const SettingsSchema = new mongoose.Schema({
     sellingPrices: { type: mongoose.Schema.Types.Mixed, default: {} },
     agentPrices: { type: mongoose.Schema.Types.Mixed, default: {} },
     subAgentPrices: { type: mongoose.Schema.Types.Mixed, default: {} },
+    // Optional per-SKU overrides for guest (no-account) checkout and developer
+    // API purchases. Any SKU left unset here falls back to sellingPrices.
+    guestPrices: { type: mongoose.Schema.Types.Mixed, default: {} },
+    apiPrices: { type: mongoose.Schema.Types.Mixed, default: {} },
     lastFetchedAt: Date
   },
   referral: {
