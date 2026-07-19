@@ -1,6 +1,6 @@
 'use client';
 import { useState, useEffect } from 'react';
-import { UserPlus, ExternalLink, Loader2, RefreshCw, ShoppingBag, TrendingUp, X, CalendarDays, DollarSign, Users, Search, PlusCircle } from 'lucide-react';
+import { UserPlus, ExternalLink, Loader2, RefreshCw, ShoppingBag, TrendingUp, X, CalendarDays, DollarSign, Users, Search, PlusCircle, KeyRound } from 'lucide-react';
 import toast from 'react-hot-toast';
 import Card from '@/components/ui/Card';
 import { formatCurrency, formatDate } from '@/lib/constants';
@@ -16,6 +16,8 @@ export default function AdminSubAgentsPage() {
   const [creditAmount, setCreditAmount] = useState('');
   const [creditReason, setCreditReason] = useState('');
   const [crediting, setCrediting] = useState(false);
+  const [newPassword, setNewPassword] = useState('');
+  const [resettingPw, setResettingPw] = useState(false);
 
   useEffect(() => {
     fetchSubAgents();
@@ -39,6 +41,7 @@ export default function AdminSubAgentsPage() {
     setSelected({ loading: true });
     setCreditAmount('');
     setCreditReason('');
+    setNewPassword('');
     try {
       const res = await api.get(`/admin/sub-agents/${id}/daily-sales`);
       setSelected(res.data.data);
@@ -85,6 +88,28 @@ export default function AdminSubAgentsPage() {
       toast.error(err.response?.data?.message || 'Failed to credit sub-agent');
     } finally {
       setCrediting(false);
+    }
+  };
+
+  const resetSubAgentPassword = async () => {
+    const sub = selected?.subAgent;
+    if (!sub?._id) return;
+    if (newPassword.length < 6) {
+      toast.error('Password must be at least 6 characters');
+      return;
+    }
+    const name = sub.storeName || sub.loginEmail || 'this sub-agent';
+    if (!confirm(`Set a new password for ${name}?\n\nGive them the new password so they can log in.`)) return;
+
+    setResettingPw(true);
+    try {
+      await api.put(`/admin/sub-agents/${sub._id}/password`, { newPassword });
+      toast.success(`Password reset for ${name}`);
+      setNewPassword('');
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Failed to reset password');
+    } finally {
+      setResettingPw(false);
     }
   };
 
@@ -389,6 +414,43 @@ export default function AdminSubAgentsPage() {
                       Credit
                     </button>
                   </div>
+                </div>
+
+                {/* Reset password */}
+                <div className="rounded-xl border border-white/[0.06] bg-white/[0.02] p-4">
+                  <div className="flex items-center gap-2 mb-1">
+                    <KeyRound className="w-4 h-4 text-primary" />
+                    <p className="text-xs font-bold text-white uppercase tracking-wider">Reset login password</p>
+                  </div>
+                  {selected.subAgent?.hasAccount ? (
+                    <>
+                      <p className="text-[11px] text-text-muted mb-3">
+                        Logs in with <span className="text-white font-semibold">{selected.subAgent?.loginEmail || 'their email'}</span>.
+                        Set a new password and share it with them.
+                      </p>
+                      <div className="flex flex-col sm:flex-row gap-2">
+                        <input
+                          type="text"
+                          value={newPassword}
+                          onChange={(e) => setNewPassword(e.target.value)}
+                          placeholder="New password (min 6 characters)"
+                          className="flex-1 bg-surface-light border border-white/10 rounded-lg px-3 py-2.5 text-sm font-mono text-white placeholder:text-text-muted focus:outline-none focus:border-primary"
+                        />
+                        <button
+                          onClick={resetSubAgentPassword}
+                          disabled={resettingPw || newPassword.length < 6}
+                          className="inline-flex items-center justify-center gap-1.5 px-4 py-2.5 bg-primary/10 hover:bg-primary/20 text-primary rounded-lg text-xs font-bold transition-colors disabled:opacity-50"
+                        >
+                          {resettingPw ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <KeyRound className="w-3.5 h-3.5" />}
+                          Set Password
+                        </button>
+                      </div>
+                    </>
+                  ) : (
+                    <p className="text-[11px] text-text-muted">
+                      This sub-agent hasn&apos;t registered yet, so there&apos;s no login to reset.
+                    </p>
+                  )}
                 </div>
 
                 {/* Sales list — profit shown is the SUB-AGENT's cut */}

@@ -1,6 +1,6 @@
 'use client';
 import { useState, useEffect } from 'react';
-import { Search, Loader2, ShieldCheck, ShieldOff, UserCheck, UserX, Wallet, ChevronDown, X } from 'lucide-react';
+import { Search, Loader2, ShieldCheck, ShieldOff, UserCheck, UserX, Wallet, ChevronDown, X, KeyRound } from 'lucide-react';
 import Card from '@/components/ui/Card';
 import Input from '@/components/ui/Input';
 import Button from '@/components/ui/Button';
@@ -17,6 +17,9 @@ export default function AdminUsersPage() {
   const [creditAmount, setCreditAmount] = useState('');
   const [creditType, setCreditType] = useState('credit'); // 'credit' or 'debit'
   const [expandedUser, setExpandedUser] = useState(null);
+  const [pwModal, setPwModal] = useState(null); // user object or null
+  const [newPassword, setNewPassword] = useState('');
+  const [resettingPw, setResettingPw] = useState(false);
 
   useEffect(() => {
     fetchUsers();
@@ -95,6 +98,27 @@ export default function AdminUsersPage() {
       toast.error(err.response?.data?.message || 'Failed to update balance');
     } finally {
       setUpdating(null);
+    }
+  };
+
+  const handleResetPassword = async () => {
+    if (newPassword.length < 6) {
+      toast.error('Password must be at least 6 characters');
+      return;
+    }
+    const user = pwModal;
+    if (!confirm(`Set a new password for ${user.name || user.email}?\n\nGive them the new password so they can log in.`)) return;
+
+    setResettingPw(true);
+    try {
+      await api.put(`/admin/users/${user._id}/password`, { newPassword });
+      toast.success(`Password reset for ${user.name || user.email}`);
+      setPwModal(null);
+      setNewPassword('');
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Failed to reset password');
+    } finally {
+      setResettingPw(false);
     }
   };
 
@@ -210,6 +234,15 @@ export default function AdminUsersPage() {
                               <><UserCheck className="w-3.5 h-3.5 inline mr-1" />Activate</>
                             )}
                           </button>
+                          <button
+                            onClick={() => { setPwModal(u); setNewPassword(''); }}
+                            disabled={updating === u._id}
+                            title="Reset password"
+                            className="px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-white/[0.06] text-text-muted hover:bg-white/10 transition-colors"
+                          >
+                            <KeyRound className="w-3.5 h-3.5 inline mr-1" />
+                            Password
+                          </button>
                         </div>
                       </td>
                     </tr>
@@ -287,6 +320,13 @@ export default function AdminUsersPage() {
                         {u.isActive !== false ? 'Deactivate' : 'Activate'}
                       </button>
                     </div>
+                    <button
+                      onClick={() => { setPwModal(u); setNewPassword(''); }}
+                      disabled={updating === u._id}
+                      className="w-full py-2 rounded-xl text-xs font-bold bg-white/[0.06] text-text-muted hover:bg-white/10 transition-colors"
+                    >
+                      <KeyRound className="w-3.5 h-3.5 inline mr-1" /> Reset Password
+                    </button>
                   </div>
                 )}
               </Card>
@@ -385,6 +425,50 @@ export default function AdminUsersPage() {
                 className={creditType === 'debit' ? '!bg-red-500 hover:!bg-red-600' : ''}
               >
                 {creditType === 'credit' ? 'Credit Wallet' : 'Debit Wallet'}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Reset Password Modal */}
+      {pwModal && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => setPwModal(null)}>
+          <div className="bg-card rounded-2xl w-full max-w-sm shadow-2xl" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between p-5 border-b border-white/[0.04]">
+              <div>
+                <h3 className="font-bold text-white flex items-center gap-2"><KeyRound className="w-4 h-4 text-primary" /> Reset Password</h3>
+                <p className="text-xs text-text-muted mt-0.5">{pwModal.name} — {pwModal.email}</p>
+              </div>
+              <button onClick={() => setPwModal(null)} className="p-1 rounded-lg hover:bg-white/[0.06]">
+                <X className="w-4 h-4 text-text-muted" />
+              </button>
+            </div>
+
+            <div className="p-5 space-y-4">
+              <div>
+                <label className="text-xs font-semibold text-text-muted mb-1.5 block">New password</label>
+                <input
+                  type="text"
+                  value={newPassword}
+                  onChange={e => setNewPassword(e.target.value)}
+                  placeholder="At least 6 characters"
+                  className="w-full px-4 py-3 rounded-xl border border-white/10 bg-white/[0.04] text-sm font-mono text-white focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
+                  autoFocus
+                />
+                <p className="text-[11px] text-text-muted mt-1.5">
+                  Shown as plain text so you can copy it and share it with the user. They can change it later.
+                </p>
+              </div>
+
+              <Button
+                onClick={handleResetPassword}
+                fullWidth
+                size="lg"
+                loading={resettingPw}
+                disabled={newPassword.length < 6}
+              >
+                Set New Password
               </Button>
             </div>
           </div>

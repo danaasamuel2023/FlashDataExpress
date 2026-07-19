@@ -474,6 +474,7 @@ router.get('/sub-agents/:id/daily-sales', async (req, res) => {
     const subAgent = await SubAgent.findById(req.params.id)
       .populate('parentAgentId', 'name email')
       .populate('storeId', 'storeName storeSlug')
+      .populate('userId', 'name email phoneNumber')
       .lean();
     if (!subAgent) {
       return res.status(404).json({ status: 'error', message: 'Sub-agent not found' });
@@ -507,6 +508,10 @@ router.get('/sub-agents/:id/daily-sales', async (req, res) => {
           totalSales: subAgent.totalSales || 0,
           totalEarnings: subAgent.totalEarnings || 0,
           pendingBalance: subAgent.pendingBalance || 0,
+          // Login account (present once the sub-agent has registered).
+          status: subAgent.status,
+          hasAccount: !!subAgent.userId,
+          loginEmail: subAgent.userId?.email || null,
         },
         sales,
         todayRevenue,
@@ -557,6 +562,47 @@ router.post('/sub-agents/:id/credit', async (req, res) => {
   }
 });
 
+// PUT /api/admin/sub-agents/:id/password - Admin sets a new password for a sub-agent.
+// A sub-agent logs in with the SAME User account referenced by SubAgent.userId, so
+// this resets that linked User's password. Only possible once the sub-agent has
+// registered (userId set); pending invites have no account yet.
+router.put('/sub-agents/:id/password', async (req, res) => {
+  try {
+    const newPassword = (req.body?.newPassword || '').toString();
+    if (newPassword.length < 6) {
+      return res.status(400).json({ status: 'error', message: 'Password must be at least 6 characters.' });
+    }
+
+    const subAgent = await SubAgent.findById(req.params.id);
+    if (!subAgent) {
+      return res.status(404).json({ status: 'error', message: 'Sub-agent not found' });
+    }
+    if (!subAgent.userId) {
+      return res.status(400).json({
+        status: 'error',
+        message: 'This sub-agent has not registered yet — there is no login to reset.',
+      });
+    }
+
+    const user = await User.findById(subAgent.userId);
+    if (!user) {
+      return res.status(404).json({ status: 'error', message: 'Linked login account not found' });
+    }
+
+    user.password = newPassword;
+    await user.save();
+
+    res.json({
+      status: 'success',
+      message: `Password reset for ${subAgent.storeName || user.name || user.email}`,
+      data: { _id: subAgent._id, email: user.email },
+    });
+  } catch (err) {
+    console.error('Admin sub-agent password reset error:', err.message);
+    res.status(500).json({ status: 'error', message: 'Something went wrong. Please try again.' });
+  }
+});
+
 // GET /api/admin/provider-prices - Fetch live prices from DataMart
 router.get('/provider-prices', async (req, res) => {
   try {
@@ -597,6 +643,35 @@ router.put('/users/:id', async (req, res) => {
     res.json({ status: 'success', data: user });
   } catch (err) {
     console.error('Admin error:', err.message);
+    res.status(500).json({ status: 'error', message: 'Something went wrong. Please try again.' });
+  }
+});
+
+// PUT /api/admin/users/:id/password - Admin sets a new password for a user (agent).
+// Loads the doc and saves so the User pre-save hook hashes it once (bcrypt, cost 12).
+// Do NOT use findByIdAndUpdate here — it bypasses the hook and would store plaintext.
+router.put('/users/:id/password', async (req, res) => {
+  try {
+    const newPassword = (req.body?.newPassword || '').toString();
+    if (newPassword.length < 6) {
+      return res.status(400).json({ status: 'error', message: 'Password must be at least 6 characters.' });
+    }
+
+    const user = await User.findById(req.params.id);
+    if (!user) {
+      return res.status(404).json({ status: 'error', message: 'User not found' });
+    }
+
+    user.password = newPassword;
+    await user.save();
+
+    res.json({
+      status: 'success',
+      message: `Password reset for ${user.name || user.email}`,
+      data: { _id: user._id, name: user.name, email: user.email },
+    });
+  } catch (err) {
+    console.error('Admin user password reset error:', err.message);
     res.status(500).json({ status: 'error', message: 'Something went wrong. Please try again.' });
   }
 });
