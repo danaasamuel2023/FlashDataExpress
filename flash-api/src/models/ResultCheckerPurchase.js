@@ -14,6 +14,8 @@ const ResultCheckerPurchaseSchema = new mongoose.Schema({
   price: { type: Number, required: true },
   costPrice: { type: Number, default: 0 },
   reference: { type: String, required: true, unique: true },
+  // Groups the units bought together in one bulk order (absent for single buys).
+  batchReference: { type: String, index: true },
   datamartReference: { type: String },
   status: { type: String, enum: ['pending', 'completed', 'failed', 'refunded'], default: 'pending', index: true },
   failureReason: { type: String },

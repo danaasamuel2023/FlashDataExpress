@@ -1,6 +1,6 @@
 'use client';
 import { useState, useEffect } from 'react';
-import { GraduationCap, Loader2, Copy, Check, ShieldCheck, X, AlertTriangle, Clock } from 'lucide-react';
+import { GraduationCap, Loader2, Copy, Check, ShieldCheck, X, AlertTriangle, Clock, Minus, Plus } from 'lucide-react';
 import toast from 'react-hot-toast';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
@@ -40,7 +40,12 @@ export default function ResultCheckerPage() {
   const [loading, setLoading] = useState(true);
   const [phone, setPhone] = useState('');
   const [buying, setBuying] = useState(null); // checkerType being bought
+  const [qty, setQty] = useState({}); // { WAEC: n, BECE: n }
   const [result, setResult] = useState(null); // last purchase to show
+
+  const MAX_QTY = 50;
+  const getQty = (type) => Math.min(MAX_QTY, Math.max(1, qty[type] || 1));
+  const setQtyFor = (type, n) => setQty(prev => ({ ...prev, [type]: Math.min(MAX_QTY, Math.max(1, n || 1)) }));
 
   useEffect(() => {
     if (user?.phoneNumber) setPhone(user.phoneNumber);
@@ -63,14 +68,28 @@ export default function ResultCheckerPage() {
     }
   };
 
-  const handleBuy = async (checkerType) => {
+  const handleBuy = async (checkerType, price) => {
     if (!phone.trim()) { toast.error('Enter a phone number first'); return; }
-    if (!confirm(`Buy a ${checkerType} result checker?`)) return;
+    const quantity = getQty(checkerType);
+    const total = (price || 0) * quantity;
+    const label = quantity > 1 ? `${quantity} ${checkerType} result checkers` : `a ${checkerType} result checker`;
+    if (!confirm(`Buy ${label} for ${formatCurrency(total)}?`)) return;
     setBuying(checkerType);
     try {
-      const res = await api.post('/checker/buy', { checkerType, phoneNumber: phone.trim() });
+      // Each unit is fulfilled by a separate provider call, so give bulk orders
+      // more time than the default 30s. Delivered checkers are always saved to
+      // history even if this request times out.
+      const res = await api.post(
+        '/checker/buy',
+        { checkerType, phoneNumber: phone.trim(), quantity },
+        { timeout: Math.max(30000, quantity * 6000) }
+      );
       setResult(res.data.data);
-      toast.success('Result checker purchased!');
+      if (res.data.data.failedCount > 0) {
+        toast.success(`${res.data.data.deliveredCount} of ${quantity} delivered — the rest were refunded.`);
+      } else {
+        toast.success(quantity > 1 ? `${quantity} result checkers purchased!` : 'Result checker purchased!');
+      }
       load();
     } catch (err) {
       toast.error(err.response?.data?.message || 'Purchase failed');
@@ -129,13 +148,46 @@ export default function ResultCheckerPage() {
                     {p.inStock ? (p.stockCount != null ? `${p.stockCount} in stock` : 'In stock') : 'Out of stock'}
                   </span>
                 </div>
+                {/* Quantity */}
+                <div className="flex items-center justify-between mt-4">
+                  <span className="text-xs font-bold text-text-muted uppercase tracking-wider">Quantity</span>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setQtyFor(p.checkerType, getQty(p.checkerType) - 1)}
+                      disabled={getQty(p.checkerType) <= 1}
+                      className="w-8 h-8 rounded-lg bg-white/[0.06] text-white flex items-center justify-center disabled:opacity-40 hover:bg-white/[0.1]"
+                      aria-label="Decrease quantity"
+                    >
+                      <Minus className="w-4 h-4" />
+                    </button>
+                    <input
+                      type="number"
+                      min="1"
+                      max={MAX_QTY}
+                      value={getQty(p.checkerType)}
+                      onChange={(e) => setQtyFor(p.checkerType, parseInt(e.target.value, 10))}
+                      className="w-14 text-center bg-white/[0.04] border border-white/[0.08] rounded-lg py-1.5 text-sm font-bold text-white focus:outline-none focus:border-primary/50"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setQtyFor(p.checkerType, getQty(p.checkerType) + 1)}
+                      disabled={getQty(p.checkerType) >= MAX_QTY}
+                      className="w-8 h-8 rounded-lg bg-white/[0.06] text-white flex items-center justify-center disabled:opacity-40 hover:bg-white/[0.1]"
+                      aria-label="Increase quantity"
+                    >
+                      <Plus className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
+
                 <Button
-                  className="w-full mt-4"
+                  className="w-full mt-3"
                   disabled={!p.inStock || buying === p.checkerType}
-                  onClick={() => handleBuy(p.checkerType)}
+                  onClick={() => handleBuy(p.checkerType, p.price)}
                 >
                   {buying === p.checkerType ? <Loader2 className="w-4 h-4 animate-spin" /> : <GraduationCap className="w-4 h-4" />}
-                  Buy {p.checkerType}
+                  Buy {getQty(p.checkerType) > 1 ? `${getQty(p.checkerType)}× ` : ''}{p.checkerType} · {formatCurrency(p.price * getQty(p.checkerType))}
                 </Button>
               </Card>
             ))}
@@ -176,18 +228,33 @@ export default function ResultCheckerPage() {
       {/* Result modal */}
       {result && (
         <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4">
-          <div className="bg-card border border-success/20 rounded-2xl max-w-md w-full">
+          <div className="bg-card border border-success/20 rounded-2xl max-w-md w-full max-h-[85vh] flex flex-col">
             <div className="p-5 border-b border-white/[0.06] flex items-center justify-between">
-              <h3 className="font-extrabold text-white flex items-center gap-2"><ShieldCheck className="w-5 h-5 text-success" /> {result.checkerType} Checker ready</h3>
+              <h3 className="font-extrabold text-white flex items-center gap-2">
+                <ShieldCheck className="w-5 h-5 text-success" />
+                {(result.deliveredCount ?? 1) > 1 ? `${result.deliveredCount} ${result.checkerType} Checkers ready` : `${result.checkerType} Checker ready`}
+              </h3>
               <button onClick={() => setResult(null)} className="text-text-muted hover:text-white p-1"><X className="w-5 h-5" /></button>
             </div>
-            <div className="p-5 space-y-3">
+            <div className="p-5 space-y-3 overflow-y-auto">
               <div className="flex items-start gap-2 bg-accent/[0.06] border border-accent/20 rounded-lg p-3">
                 <AlertTriangle className="w-4 h-4 text-accent flex-shrink-0 mt-0.5" />
                 <p className="text-[11px] text-text-muted">Keep these safe — they&apos;re also saved in your history below.</p>
               </div>
-              <Copyable label="Serial Number" value={result.serialNumber} />
-              <Copyable label="PIN" value={result.pin} />
+              {result.failedCount > 0 && (
+                <p className="text-[11px] text-accent">
+                  {result.failedCount} of {result.quantity} couldn&apos;t be delivered and {result.failedCount > 1 ? 'were' : 'was'} refunded.
+                </p>
+              )}
+              {(result.checkers || (result.serialNumber ? [{ serialNumber: result.serialNumber, pin: result.pin }] : [])).map((c, i) => (
+                <div key={c.reference || i} className="space-y-2 rounded-lg border border-white/[0.06] p-3">
+                  {(result.checkers?.length ?? 0) > 1 && (
+                    <p className="text-[10px] font-bold text-text-muted uppercase tracking-wider">Checker {i + 1}</p>
+                  )}
+                  <Copyable label="Serial Number" value={c.serialNumber} />
+                  <Copyable label="PIN" value={c.pin} />
+                </div>
+              ))}
             </div>
             <div className="flex items-center justify-end p-5 border-t border-white/[0.06]">
               <Button size="sm" onClick={() => setResult(null)}><Check className="w-4 h-4" /> Done</Button>
