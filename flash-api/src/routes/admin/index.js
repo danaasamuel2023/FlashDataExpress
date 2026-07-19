@@ -16,6 +16,7 @@ const paystackService = require('../../services/paystackService');
 const { encrypt, mask, isConfigured } = require('../../utils/encryption');
 const { generateReference } = require('../../utils/helpers');
 const { refundFailedPurchase } = require('../../utils/refund');
+const { creditStoreProfit } = require('../../utils/storePurchaseProcessor');
 // All purchases go through DataMart
 
 // All admin routes require auth + admin
@@ -356,6 +357,45 @@ router.get('/stores/:id/daily-sales', async (req, res) => {
   }
 });
 
+// POST /api/admin/stores/:id/credit - Manually credit an agent store's profit.
+// For delivered orders whose profit wasn't auto-credited (e.g. a stuck-pending
+// order the admin is settling by hand). Adds to both totalEarnings (lifetime) and
+// pendingBalance (withdrawable), and records an audit entry on the store.
+router.post('/stores/:id/credit', async (req, res) => {
+  try {
+    const amount = Number(req.body?.amount);
+    if (!amount || !isFinite(amount) || amount <= 0) {
+      return res.status(400).json({ status: 'error', message: 'Enter a valid amount greater than 0.' });
+    }
+    const reason = (req.body?.reason || '').trim() || 'Manual profit credit by admin';
+
+    const store = await Store.findByIdAndUpdate(
+      req.params.id,
+      {
+        $inc: { totalEarnings: amount, pendingBalance: amount },
+        $push: { manualCredits: { amount, reason, creditedBy: req.user._id, createdAt: new Date() } },
+      },
+      { new: true }
+    );
+    if (!store) {
+      return res.status(404).json({ status: 'error', message: 'Store not found' });
+    }
+
+    res.json({
+      status: 'success',
+      message: `Credited ${amount} to ${store.storeName}`,
+      data: {
+        totalEarnings: store.totalEarnings,
+        pendingBalance: store.pendingBalance,
+        totalSales: store.totalSales,
+      },
+    });
+  } catch (err) {
+    console.error('Admin store credit error:', err.message);
+    res.status(500).json({ status: 'error', message: 'Something went wrong. Please try again.' });
+  }
+});
+
 // GET /api/admin/sub-agents - All sub-agents with THEIR OWN sales & profit.
 // Sub-shop orders also live under the parent agent's store, but their profit is
 // split: storeDetails.agentProfit -> agent, storeDetails.subAgentProfit -> sub-agent.
@@ -476,6 +516,43 @@ router.get('/sub-agents/:id/daily-sales', async (req, res) => {
     });
   } catch (err) {
     console.error('Admin sub-agent daily-sales error:', err.message);
+    res.status(500).json({ status: 'error', message: 'Something went wrong. Please try again.' });
+  }
+});
+
+// POST /api/admin/sub-agents/:id/credit - Manually credit a sub-agent's profit.
+// Mirrors /stores/:id/credit for the sub-agent's own cut.
+router.post('/sub-agents/:id/credit', async (req, res) => {
+  try {
+    const amount = Number(req.body?.amount);
+    if (!amount || !isFinite(amount) || amount <= 0) {
+      return res.status(400).json({ status: 'error', message: 'Enter a valid amount greater than 0.' });
+    }
+    const reason = (req.body?.reason || '').trim() || 'Manual profit credit by admin';
+
+    const subAgent = await SubAgent.findByIdAndUpdate(
+      req.params.id,
+      {
+        $inc: { totalEarnings: amount, pendingBalance: amount },
+        $push: { manualCredits: { amount, reason, creditedBy: req.user._id, createdAt: new Date() } },
+      },
+      { new: true }
+    );
+    if (!subAgent) {
+      return res.status(404).json({ status: 'error', message: 'Sub-agent not found' });
+    }
+
+    res.json({
+      status: 'success',
+      message: `Credited ${amount} to ${subAgent.storeName || 'sub-agent'}`,
+      data: {
+        totalEarnings: subAgent.totalEarnings,
+        pendingBalance: subAgent.pendingBalance,
+        totalSales: subAgent.totalSales,
+      },
+    });
+  } catch (err) {
+    console.error('Admin sub-agent credit error:', err.message);
     res.status(500).json({ status: 'error', message: 'Something went wrong. Please try again.' });
   }
 });
@@ -641,6 +718,116 @@ router.get('/orders/awaiting-refund', async (req, res) => {
     });
   } catch (err) {
     console.error('Admin awaiting-refund error:', err.message);
+    res.status(500).json({ status: 'error', message: 'Something went wrong. Please try again.' });
+  }
+});
+
+// GET /api/admin/orders/pending - Store/sub-shop orders still pending or processing.
+// Agent profit is credited on delivery, so these have NOT paid out yet. Some may
+// already be delivered at the provider but stuck pending on our side; use
+// POST /admin/orders/:id/complete to mark them delivered and credit profit.
+router.get('/orders/pending', async (req, res) => {
+  try {
+    const { from, to, search } = req.query;
+    const filter = {
+      status: { $in: ['pending', 'processing'] },
+      purchaseSource: { $in: STORE_SOURCES },
+    };
+
+    if (from || to) {
+      const range = {};
+      if (from) range.$gte = new Date(from);
+      if (to) {
+        const end = new Date(to);
+        end.setHours(23, 59, 59, 999);
+        range.$lte = end;
+      }
+      filter.createdAt = range;
+    }
+
+    if (search && search.trim()) {
+      const s = search.trim();
+      filter.$or = [
+        { phoneNumber: { $regex: s, $options: 'i' } },
+        { reference: { $regex: s, $options: 'i' } },
+        { datamartReference: { $regex: s, $options: 'i' } },
+      ];
+    }
+
+    const orders = await DataPurchase.find(filter)
+      .populate('userId', 'name email phone')
+      .sort({ createdAt: -1 })
+      .limit(500)
+      .lean();
+
+    const totalAmount = orders.reduce((s, r) => s + (r.price || 0), 0);
+    const totalUncredited = orders.reduce(
+      (s, r) => s + (r.storeDetails?.agentProfit || 0) + (r.storeDetails?.subAgentProfit || 0),
+      0
+    );
+
+    res.json({
+      status: 'success',
+      data: { orders, count: orders.length, totalAmount, totalUncredited },
+    });
+  } catch (err) {
+    console.error('Admin pending-orders error:', err.message);
+    res.status(500).json({ status: 'error', message: 'Something went wrong. Please try again.' });
+  }
+});
+
+// POST /api/admin/orders/:id/complete - Mark a pending/processing order as
+// delivered and credit agent/sub-agent profit. Use when the order actually
+// delivered at the provider but stayed pending on our side. Profit crediting is
+// idempotent (storeDetails.profitCredited), so it's safe if the webhook/poller
+// later completes the same order. Pass { verify: true } to re-check DataMart
+// first and refuse if the provider reports the order failed.
+router.post('/orders/:id/complete', async (req, res) => {
+  try {
+    const purchase = await DataPurchase.findById(req.params.id);
+    if (!purchase) {
+      return res.status(404).json({ status: 'error', message: 'Order not found' });
+    }
+    if (purchase.status === 'completed') {
+      return res.status(400).json({ status: 'error', message: 'Order is already completed' });
+    }
+    if (purchase.status === 'refunded') {
+      return res.status(400).json({
+        status: 'error',
+        message: 'Order was refunded. Reverse the refund from Refunds instead.',
+      });
+    }
+
+    if (req.body?.verify && purchase.datamartReference) {
+      try {
+        const result = await datamartService.checkOrderStatus(purchase.datamartReference);
+        const providerStatus = (result?.status || '').toLowerCase();
+        if (providerStatus === 'failed' || providerStatus === 'rejected') {
+          return res.status(400).json({
+            status: 'error',
+            message: `Provider reports this order as "${providerStatus}". Not completing.`,
+          });
+        }
+      } catch (e) {
+        // Provider unreachable — fall through and let admin force the completion.
+      }
+    }
+
+    purchase.status = 'completed';
+    if (!purchase.completedAt) purchase.completedAt = new Date();
+    purchase.failureReason = undefined;
+    await purchase.save();
+
+    // Credits agent + sub-agent profit once, guarded by storeDetails.profitCredited.
+    await creditStoreProfit(purchase);
+
+    res.json({
+      status: 'success',
+      message: 'Order marked delivered and profit credited',
+      data: { purchase },
+    });
+  } catch (err) {
+    console.error('Admin complete order error:', err.message);
     res.status(500).json({ status: 'error', message: 'Something went wrong. Please try again.' });
   }
 });

@@ -1,6 +1,6 @@
 'use client';
 import { useState, useEffect } from 'react';
-import { Store, ExternalLink, Loader2, RefreshCw, ShoppingBag, TrendingUp, Wallet, X, CalendarDays, DollarSign, Search } from 'lucide-react';
+import { Store, ExternalLink, Loader2, RefreshCw, ShoppingBag, TrendingUp, Wallet, X, CalendarDays, DollarSign, Search, PlusCircle } from 'lucide-react';
 import toast from 'react-hot-toast';
 import Card from '@/components/ui/Card';
 import { formatCurrency, formatDate } from '@/lib/constants';
@@ -13,6 +13,9 @@ export default function AdminStoresPage() {
   const [selectedStore, setSelectedStore] = useState(null); // { store, sales, todayRevenue, todayProfit, count }
   const [loadingDetail, setLoadingDetail] = useState(false);
   const [query, setQuery] = useState('');
+  const [creditAmount, setCreditAmount] = useState('');
+  const [creditReason, setCreditReason] = useState('');
+  const [crediting, setCrediting] = useState(false);
 
   useEffect(() => {
     fetchStores();
@@ -34,6 +37,8 @@ export default function AdminStoresPage() {
   const openStoreDetail = async (storeId) => {
     setLoadingDetail(true);
     setSelectedStore({ loading: true });
+    setCreditAmount('');
+    setCreditReason('');
     try {
       const res = await api.get(`/admin/stores/${storeId}/daily-sales`);
       setSelectedStore(res.data.data);
@@ -42,6 +47,45 @@ export default function AdminStoresPage() {
       setSelectedStore(null);
     } finally {
       setLoadingDetail(false);
+    }
+  };
+
+  const creditStore = async () => {
+    const store = selectedStore?.store;
+    if (!store?._id) return;
+    const amount = Number(creditAmount);
+    if (!amount || amount <= 0) {
+      toast.error('Enter an amount greater than 0');
+      return;
+    }
+    if (!confirm(
+      `Credit ${formatCurrency(amount)} to ${store.storeName}?\n\n` +
+      `This adds to both the agent's total earnings and withdrawable pending balance.`
+    )) return;
+
+    setCrediting(true);
+    try {
+      const res = await api.post(`/admin/stores/${store._id}/credit`, {
+        amount,
+        reason: creditReason.trim() || undefined,
+      });
+      const { totalEarnings, pendingBalance, totalSales } = res.data.data || {};
+      toast.success(`Credited ${formatCurrency(amount)} to ${store.storeName}`);
+      // Reflect new balances in the open modal…
+      setSelectedStore((prev) => prev && ({
+        ...prev,
+        store: { ...prev.store, totalEarnings, pendingBalance, totalSales },
+      }));
+      setCreditAmount('');
+      setCreditReason('');
+      // …and in the list row.
+      setStores((prev) => prev.map((s) => (
+        s._id === store._id ? { ...s, totalEarnings, pendingBalance, totalSales } : s
+      )));
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Failed to credit store');
+    } finally {
+      setCrediting(false);
     }
   };
 
@@ -303,6 +347,43 @@ export default function AdminStoresPage() {
                     <p className="text-base font-extrabold text-white">{formatCurrency(selectedStore.store?.pendingBalance || 0)}</p>
                     <p className="text-[10px] text-text-muted">Pending Balance</p>
                   </Card>
+                </div>
+
+                {/* Manual profit credit */}
+                <div className="rounded-xl border border-white/[0.06] bg-white/[0.02] p-4">
+                  <div className="flex items-center gap-2 mb-1">
+                    <PlusCircle className="w-4 h-4 text-success" />
+                    <p className="text-xs font-bold text-white uppercase tracking-wider">Manually credit profit</p>
+                  </div>
+                  <p className="text-[11px] text-text-muted mb-3">
+                    For a delivered order whose profit wasn&apos;t auto-credited. Adds to both total earnings and the withdrawable pending balance.
+                  </p>
+                  <div className="flex flex-col sm:flex-row gap-2">
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={creditAmount}
+                      onChange={(e) => setCreditAmount(e.target.value)}
+                      placeholder="Amount (GHS)"
+                      className="w-full sm:w-40 bg-surface-light border border-white/10 rounded-lg px-3 py-2.5 text-sm text-white placeholder:text-text-muted focus:outline-none focus:border-primary"
+                    />
+                    <input
+                      type="text"
+                      value={creditReason}
+                      onChange={(e) => setCreditReason(e.target.value)}
+                      placeholder="Reason (optional) — e.g. stuck-pending order settled"
+                      className="flex-1 bg-surface-light border border-white/10 rounded-lg px-3 py-2.5 text-sm text-white placeholder:text-text-muted focus:outline-none focus:border-primary"
+                    />
+                    <button
+                      onClick={creditStore}
+                      disabled={crediting || !creditAmount}
+                      className="inline-flex items-center justify-center gap-1.5 px-4 py-2.5 bg-success/10 hover:bg-success/20 text-success rounded-lg text-xs font-bold transition-colors disabled:opacity-50"
+                    >
+                      {crediting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <PlusCircle className="w-3.5 h-3.5" />}
+                      Credit
+                    </button>
+                  </div>
                 </div>
 
                 {/* Sales list */}

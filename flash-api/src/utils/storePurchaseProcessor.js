@@ -231,4 +231,4 @@ async function processSubShopPurchase({ reference, metadata }) {
   return { ok: true, alreadyProcessed: false, purchase };
 }
 
-module.exports = { processStorePurchase, processSubShopPurchase };
+module.exports = { processStorePurchase, processSubShopPurchase, creditStoreProfit };

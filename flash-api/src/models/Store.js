@@ -45,6 +45,14 @@ const StoreSchema = new mongoose.Schema({
   totalEarnings: { type: Number, default: 0 },
   totalSales: { type: Number, default: 0 },
   pendingBalance: { type: Number, default: 0 },
+  // Audit trail for admin-issued manual profit credits (e.g. a delivered order
+  // whose profit wasn't auto-credited). Each entry adds to totalEarnings + pendingBalance.
+  manualCredits: [{
+    amount: Number,
+    reason: String,
+    creditedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+    createdAt: { type: Date, default: Date.now },
+  }],
   momoDetails: {
     number: String,
     network: { type: String, enum: ['MTN', 'Telecel', 'AirtelTigo', 'mtn', 'telecel', 'airteltigo'] },

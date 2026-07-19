@@ -53,6 +53,13 @@ const SubAgentSchema = new mongoose.Schema({
   totalEarnings: { type: Number, default: 0 },
   totalSales: { type: Number, default: 0 },
   pendingBalance: { type: Number, default: 0 },
+  // Audit trail for admin-issued manual profit credits. Mirrors Store.manualCredits.
+  manualCredits: [{
+    amount: Number,
+    reason: String,
+    creditedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+    createdAt: { type: Date, default: Date.now },
+  }],
   momoDetails: {
     number: String,
     network: String,
