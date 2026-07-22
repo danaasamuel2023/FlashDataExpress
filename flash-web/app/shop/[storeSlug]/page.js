@@ -33,6 +33,10 @@ export default function PublicStorePage({ params }) {
   const [error, setError] = useState(null);
   const [isDarkMode, setIsDarkMode] = useState(false);
   const [paymentStatus, setPaymentStatus] = useState(null);
+  const [checkers, setCheckers] = useState([]);
+  const [checkerPhone, setCheckerPhone] = useState('');
+  const [buyingChecker, setBuyingChecker] = useState(null);
+  const [checkerResult, setCheckerResult] = useState(null);
 
   const [windowWidth, setWindowWidth] = useState(typeof window !== 'undefined' ? window.innerWidth : 640);
   useEffect(() => {
@@ -61,7 +65,11 @@ export default function PublicStorePage({ params }) {
     if (ref && !paymentStatus) {
       setPaymentStatus('verifying');
       api.get(`/shop/${storeSlug}/verify-payment?reference=${ref}`)
-        .then(() => setPaymentStatus('success'))
+        .then((r) => {
+          const d = r.data?.data;
+          if (d?.kind === 'checker' && d?.status === 'completed') setCheckerResult(d);
+          setPaymentStatus('success');
+        })
         .catch(() => setPaymentStatus('failed'));
       window.history.replaceState({}, '', `/shop/${storeSlug}`);
     }
@@ -81,18 +89,35 @@ export default function PublicStorePage({ params }) {
 
   const fetchStore = async () => {
     try {
-      const [storeRes, productsRes] = await Promise.all([
+      const [storeRes, productsRes, checkersRes] = await Promise.all([
         api.get(`/shop/${storeSlug}`),
         api.get(`/shop/${storeSlug}/products`),
+        api.get(`/shop/${storeSlug}/checkers`).catch(() => ({ data: { data: { products: [] } } })),
       ]);
       setStore(storeRes.data.data);
       setProducts(productsRes.data.data || []);
+      setCheckers(checkersRes.data.data?.products || []);
       const availableNets = NETWORKS.filter(n => (productsRes.data.data || []).some(p => p.network === n.id));
       if (availableNets.length > 0) setSelectedNetwork(availableNets[0].id);
     } catch (err) {
       setError(err.response?.status === 404 ? 'Store not found' : 'Failed to load store');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const buyChecker = async (checkerType) => {
+    if (!checkerPhone.trim() || checkerPhone.replace(/\D/g, '').length < 10) {
+      toast.error('Enter a valid phone number');
+      return;
+    }
+    setBuyingChecker(checkerType);
+    try {
+      const res = await api.post(`/shop/${storeSlug}/buy-checker`, { checkerType, phoneNumber: checkerPhone.trim() });
+      window.location.href = res.data.data.authorization_url;
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Purchase failed');
+      setBuyingChecker(null);
     }
   };
 
@@ -191,9 +216,27 @@ export default function PublicStorePage({ params }) {
             <Check className="w-8 h-8 text-green-600 dark:text-green-400" />
           </div>
           <h1 className="text-xl font-bold text-gray-900 dark:text-white">Payment Successful!</h1>
-          <p className="text-gray-500 dark:text-gray-400 text-sm mt-2 mb-6">Your data bundle is being processed and will be delivered shortly.</p>
+          {checkerResult ? (
+            <>
+              <p className="text-gray-500 dark:text-gray-400 text-sm mt-2 mb-4">
+                Your {checkerResult.checkerType} checker is ready. Save these — take a screenshot.
+              </p>
+              <div className="space-y-2 text-left mb-6">
+                <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl px-4 py-3">
+                  <p className="text-[10px] uppercase tracking-wider text-gray-400">Serial Number</p>
+                  <p className="text-lg font-bold font-mono text-gray-900 dark:text-white break-all">{checkerResult.serialNumber}</p>
+                </div>
+                <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl px-4 py-3">
+                  <p className="text-[10px] uppercase tracking-wider text-gray-400">PIN</p>
+                  <p className="text-lg font-bold font-mono text-gray-900 dark:text-white break-all">{checkerResult.pin}</p>
+                </div>
+              </div>
+            </>
+          ) : (
+            <p className="text-gray-500 dark:text-gray-400 text-sm mt-2 mb-6">Your data bundle is being processed and will be delivered shortly.</p>
+          )}
           <button
-            onClick={() => setPaymentStatus(null)}
+            onClick={() => { setCheckerResult(null); setPaymentStatus(null); }}
             className="px-6 py-3 bg-amber-500 hover:bg-amber-600 text-white font-bold rounded-xl transition-colors"
           >
             Continue Shopping
@@ -402,6 +445,45 @@ export default function PublicStorePage({ params }) {
                 })}
               </div>
             )}
+          </div>
+        )}
+
+        {/* Result Checkers */}
+        {checkers.length > 0 && (
+          <div>
+            <h2 className="text-lg font-bold text-gray-900 dark:text-white mb-1">Result Checkers</h2>
+            <p className="text-xs text-gray-400 dark:text-gray-500 mb-3">WAEC &amp; BECE checkers — Serial &amp; PIN delivered instantly after payment.</p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {checkers.map((c) => (
+                <div key={c.checkerType} className="bg-white dark:bg-gray-800 rounded-2xl p-4 border border-gray-200 dark:border-gray-700">
+                  <div className="flex items-center justify-between mb-3">
+                    <div>
+                      <p className="font-bold text-gray-900 dark:text-white">{c.name}</p>
+                      <p className="text-xl font-extrabold" style={{ color: primaryColor }}>{formatCurrency(c.price)}</p>
+                    </div>
+                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${c.inStock ? 'bg-green-100 text-green-700 dark:bg-green-500/20 dark:text-green-400' : 'bg-red-100 text-red-700 dark:bg-red-500/20 dark:text-red-400'}`}>
+                      {c.inStock ? (c.stockCount != null ? `${c.stockCount} left` : 'In stock') : 'Out of stock'}
+                    </span>
+                  </div>
+                  <input
+                    type="tel"
+                    value={checkerPhone}
+                    onChange={(e) => setCheckerPhone(formatPhone(e.target.value))}
+                    placeholder="Phone number (for your records)"
+                    className="w-full mb-2 px-3 py-2.5 rounded-xl bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-400 border border-gray-200 dark:border-gray-600 focus:border-amber-400 focus:outline-none text-sm"
+                  />
+                  <button
+                    onClick={() => buyChecker(c.checkerType)}
+                    disabled={!c.inStock || buyingChecker === c.checkerType}
+                    className="w-full px-4 py-2.5 font-bold rounded-xl text-white text-sm transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+                    style={{ backgroundColor: primaryColor }}
+                  >
+                    {buyingChecker === c.checkerType ? <Loader2 className="w-4 h-4 animate-spin" /> : <ShoppingBag className="w-4 h-4" />}
+                    Pay {formatCurrency(c.price)}
+                  </button>
+                </div>
+              ))}
+            </div>
           </div>
         )}
 

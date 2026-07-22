@@ -42,6 +42,14 @@ const StoreSchema = new mongoose.Schema({
     uppercase: true,
     trim: true,
   },
+  // WAEC/BECE result checkers the agent resells on their shop. enabled + the
+  // customer price they set for each type. Cost basis is Settings.resultChecker
+  // agent price; profit = price - agent cost, credited on delivery.
+  checkerPricing: {
+    enabled: { type: Boolean, default: false },
+    waecPrice: { type: Number, default: 0 },
+    becePrice: { type: Number, default: 0 },
+  },
   totalEarnings: { type: Number, default: 0 },
   totalSales: { type: Number, default: 0 },
   pendingBalance: { type: Number, default: 0 },

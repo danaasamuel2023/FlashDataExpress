@@ -683,6 +683,68 @@ router.put('/my-products', subagentAuth, async (req, res) => {
   }
 });
 
+// GET /api/subagent/my-checker-pricing — Sub-agent's WAEC/BECE resell settings.
+// Their cost floor is their parent agent's checker selling price.
+router.get('/my-checker-pricing', subagentAuth, async (req, res) => {
+  try {
+    const settings = await Settings.getSettings();
+    const rc = settings?.resultChecker || {};
+    const parentStore = await Store.findById(req.subAgent.storeId._id || req.subAgent.storeId);
+    const parent = parentStore?.checkerPricing || {};
+    const parentSells = parent.enabled && (parent.waecPrice > 0 || parent.becePrice > 0);
+
+    res.json({
+      status: 'success',
+      data: {
+        platformEnabled: rc.enabled !== false,
+        parentSellsCheckers: !!parentSells,
+        pricing: {
+          enabled: !!req.subAgent.checkerPricing?.enabled,
+          waecPrice: req.subAgent.checkerPricing?.waecPrice || 0,
+          becePrice: req.subAgent.checkerPricing?.becePrice || 0,
+        },
+        // The sub-agent pays their parent this per checker; they must sell above it.
+        cost: { waec: parent.waecPrice || 0, bece: parent.becePrice || 0 },
+      },
+    });
+  } catch (err) {
+    console.error('SubAgent checker-pricing error:', err.message);
+    res.status(500).json({ status: 'error', message: 'Something went wrong. Please try again.' });
+  }
+});
+
+// PUT /api/subagent/my-checker-pricing — Sub-agent enables checkers and sets prices,
+// floored at their parent agent's checker price.
+router.put('/my-checker-pricing', subagentAuth, async (req, res) => {
+  try {
+    const parentStore = await Store.findById(req.subAgent.storeId._id || req.subAgent.storeId);
+    const parent = parentStore?.checkerPricing || {};
+    const { enabled, waecPrice, becePrice } = req.body;
+
+    const waec = Number(waecPrice);
+    const bece = Number(becePrice);
+    if (waecPrice !== undefined && (!isFinite(waec) || waec < 0)) {
+      return res.status(400).json({ status: 'error', message: 'Invalid WAEC price' });
+    }
+    if (becePrice !== undefined && (!isFinite(bece) || bece < 0)) {
+      return res.status(400).json({ status: 'error', message: 'Invalid BECE price' });
+    }
+
+    const next = {
+      enabled: enabled !== undefined ? !!enabled : !!req.subAgent.checkerPricing?.enabled,
+      waecPrice: waecPrice !== undefined ? Math.max(waec, parent.waecPrice || 0) : (req.subAgent.checkerPricing?.waecPrice || 0),
+      becePrice: becePrice !== undefined ? Math.max(bece, parent.becePrice || 0) : (req.subAgent.checkerPricing?.becePrice || 0),
+    };
+    req.subAgent.checkerPricing = next;
+    await req.subAgent.save();
+
+    res.json({ status: 'success', data: { pricing: next } });
+  } catch (err) {
+    console.error('SubAgent update checker-pricing error:', err.message);
+    res.status(500).json({ status: 'error', message: 'Something went wrong. Please try again.' });
+  }
+});
+
 // PUT /api/subagent/my-store — Sub-agent updates their store details
 router.put('/my-store', subagentAuth, async (req, res) => {
   try {

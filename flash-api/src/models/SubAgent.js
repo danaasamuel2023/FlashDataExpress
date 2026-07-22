@@ -50,6 +50,13 @@ const SubAgentSchema = new mongoose.Schema({
     min: 1,
     max: 90
   },
+  // WAEC/BECE result checkers the sub-agent resells on their shop. Cost basis is
+  // their parent agent's checker selling price; profit = their price - that cost.
+  checkerPricing: {
+    enabled: { type: Boolean, default: false },
+    waecPrice: { type: Number, default: 0 },
+    becePrice: { type: Number, default: 0 },
+  },
   totalEarnings: { type: Number, default: 0 },
   totalSales: { type: Number, default: 0 },
   pendingBalance: { type: Number, default: 0 },

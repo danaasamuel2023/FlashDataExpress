@@ -5,6 +5,7 @@ import toast from 'react-hot-toast';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
 import NetworkIcon from '@/components/shared/NetworkIcon';
+import SellerCheckerPricing from '@/components/shared/SellerCheckerPricing';
 import { formatCurrency } from '@/lib/constants';
 import api from '@/lib/api';
 
@@ -181,6 +182,8 @@ export default function StoreProductsPage() {
           </div>
         </Card>
       )}
+
+      <SellerCheckerPricing getUrl="/store/checker-pricing" putUrl="/store/checker-pricing" theme="dark" />
     </div>
   );
 }

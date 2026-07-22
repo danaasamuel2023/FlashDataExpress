@@ -171,6 +171,70 @@ router.put('/update', auth, async (req, res) => {
   }
 });
 
+// GET /api/store/checker-pricing — Agent's WAEC/BECE resell settings + cost floor.
+router.get('/checker-pricing', auth, async (req, res) => {
+  try {
+    const store = await Store.findOne({ agentId: req.user._id });
+    if (!store) {
+      return res.status(404).json({ status: 'error', message: 'Store not found' });
+    }
+    const settings = await Settings.getSettings();
+    const rc = settings?.resultChecker || {};
+    res.json({
+      status: 'success',
+      data: {
+        platformEnabled: rc.enabled !== false,
+        pricing: {
+          enabled: !!store.checkerPricing?.enabled,
+          waecPrice: store.checkerPricing?.waecPrice || 0,
+          becePrice: store.checkerPricing?.becePrice || 0,
+        },
+        // The agent pays this per checker; they must sell at or above it.
+        cost: { waec: rc.agentWaecPrice || 0, bece: rc.agentBecePrice || 0 },
+      },
+    });
+  } catch (err) {
+    console.error('Store checker-pricing error:', err.message);
+    res.status(500).json({ status: 'error', message: 'Something went wrong. Please try again.' });
+  }
+});
+
+// PUT /api/store/checker-pricing — Agent enables checkers and sets their prices.
+// Prices are floored at the agent cost so they can't sell below what they pay.
+router.put('/checker-pricing', auth, async (req, res) => {
+  try {
+    const store = await Store.findOne({ agentId: req.user._id });
+    if (!store) {
+      return res.status(404).json({ status: 'error', message: 'Store not found' });
+    }
+    const settings = await Settings.getSettings();
+    const rc = settings?.resultChecker || {};
+    const { enabled, waecPrice, becePrice } = req.body;
+
+    const waec = Number(waecPrice);
+    const bece = Number(becePrice);
+    if (waecPrice !== undefined && (!isFinite(waec) || waec < 0)) {
+      return res.status(400).json({ status: 'error', message: 'Invalid WAEC price' });
+    }
+    if (becePrice !== undefined && (!isFinite(bece) || bece < 0)) {
+      return res.status(400).json({ status: 'error', message: 'Invalid BECE price' });
+    }
+
+    const next = {
+      enabled: enabled !== undefined ? !!enabled : !!store.checkerPricing?.enabled,
+      waecPrice: waecPrice !== undefined ? Math.max(waec, rc.agentWaecPrice || 0) : (store.checkerPricing?.waecPrice || 0),
+      becePrice: becePrice !== undefined ? Math.max(bece, rc.agentBecePrice || 0) : (store.checkerPricing?.becePrice || 0),
+    };
+    store.checkerPricing = next;
+    await store.save();
+
+    res.json({ status: 'success', data: { pricing: next } });
+  } catch (err) {
+    console.error('Store update checker-pricing error:', err.message);
+    res.status(500).json({ status: 'error', message: 'Something went wrong. Please try again.' });
+  }
+});
+
 // GET /api/store/agent-packages — Returns the agent's cost prices (agentPrices if set, else sellingPrices)
 router.get('/agent-packages', auth, async (req, res) => {
   try {

@@ -34,6 +34,8 @@ export default function AdminCheckerConfig() {
         cost: Number(cfg.cost),
         waecPrice: Number(cfg.waecPrice),
         becePrice: Number(cfg.becePrice),
+        agentWaecPrice: Number(cfg.agentWaecPrice),
+        agentBecePrice: Number(cfg.agentBecePrice),
       });
       toast.success('Result checker pricing saved');
     } catch (err) {
@@ -88,6 +90,15 @@ export default function AdminCheckerConfig() {
         <Field label="DataMart cost" value={cfg.cost} onChange={(v) => setCfg({ ...cfg, cost: v })} hint="What DataMart charges you" />
         <Field label="WAEC price" value={cfg.waecPrice} onChange={(v) => setCfg({ ...cfg, waecPrice: v })} hint={`Profit ${formatCurrency(num(cfg.waecPrice) - num(cfg.cost))}${stockFor('WAEC') ? ` · ${stockFor('WAEC').inStock ? (stockFor('WAEC').stockCount ?? 'in stock') : 'out of stock'}` : ''}`} />
         <Field label="BECE price" value={cfg.becePrice} onChange={(v) => setCfg({ ...cfg, becePrice: v })} hint={`Profit ${formatCurrency(num(cfg.becePrice) - num(cfg.cost))}${stockFor('BECE') ? ` · ${stockFor('BECE').inStock ? (stockFor('BECE').stockCount ?? 'in stock') : 'out of stock'}` : ''}`} />
+      </div>
+
+      <div className="mt-5 pt-4 border-t border-white/[0.06]">
+        <p className="text-[11px] font-bold text-text-muted uppercase tracking-wider mb-3">Agent / sub-agent reseller cost</p>
+        <p className="text-[11px] text-text-muted mb-3">What agents pay per checker when they resell on their shops. They set their own customer price above this; your margin = agent cost − DataMart cost.</p>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <Field label="Agent WAEC cost" value={cfg.agentWaecPrice} onChange={(v) => setCfg({ ...cfg, agentWaecPrice: v })} hint={`Your margin ${formatCurrency(num(cfg.agentWaecPrice) - num(cfg.cost))} per sale`} />
+          <Field label="Agent BECE cost" value={cfg.agentBecePrice} onChange={(v) => setCfg({ ...cfg, agentBecePrice: v })} hint={`Your margin ${formatCurrency(num(cfg.agentBecePrice) - num(cfg.cost))} per sale`} />
+        </div>
       </div>
 
       <div className="flex justify-end mt-4">

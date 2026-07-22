@@ -1705,6 +1705,9 @@ router.get('/checker-config', async (req, res) => {
         cost: rc.cost ?? 15.7,
         waecPrice: rc.waecPrice ?? 0,
         becePrice: rc.becePrice ?? 0,
+        // Agent cost basis when agents/sub-agents resell checkers on their shops.
+        agentWaecPrice: rc.agentWaecPrice ?? 0,
+        agentBecePrice: rc.agentBecePrice ?? 0,
         stock,
       },
     });
@@ -1717,12 +1720,14 @@ router.get('/checker-config', async (req, res) => {
 // PUT /api/admin/checker-config — update pricing / availability
 router.put('/checker-config', async (req, res) => {
   try {
-    const { enabled, cost, waecPrice, becePrice } = req.body;
+    const { enabled, cost, waecPrice, becePrice, agentWaecPrice, agentBecePrice } = req.body;
     const update = {};
     if (enabled !== undefined) update['resultChecker.enabled'] = !!enabled;
     if (cost !== undefined && cost >= 0) update['resultChecker.cost'] = Number(cost);
     if (waecPrice !== undefined && waecPrice >= 0) update['resultChecker.waecPrice'] = Number(waecPrice);
     if (becePrice !== undefined && becePrice >= 0) update['resultChecker.becePrice'] = Number(becePrice);
+    if (agentWaecPrice !== undefined && agentWaecPrice >= 0) update['resultChecker.agentWaecPrice'] = Number(agentWaecPrice);
+    if (agentBecePrice !== undefined && agentBecePrice >= 0) update['resultChecker.agentBecePrice'] = Number(agentBecePrice);
 
     await Settings.findByIdAndUpdate('app_settings', { $set: update }, { upsert: true });
     const settings = await Settings.getSettings();

@@ -67,6 +67,12 @@ const SettingsSchema = new mongoose.Schema({
     cost: { type: Number, default: 15.7 },
     waecPrice: { type: Number, default: 17 },
     becePrice: { type: Number, default: 17 },
+    // Agent cost basis when agents/sub-agents resell checkers on their shops.
+    // Platform margin on a reseller sale = agent price - cost. Agents set their
+    // own customer price above this; a sub-agent's cost basis is their parent
+    // agent's checker selling price.
+    agentWaecPrice: { type: Number, default: 16 },
+    agentBecePrice: { type: Number, default: 16 },
   },
   sms: {
     apiKey: { type: String, default: '' },

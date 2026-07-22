@@ -4,6 +4,7 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { ArrowLeft, Save, Loader2, Package } from 'lucide-react';
 import toast from 'react-hot-toast';
+import SellerCheckerPricing from '@/components/shared/SellerCheckerPricing';
 import { formatCurrency } from '@/lib/constants';
 import api from '@/lib/api';
 
@@ -221,6 +222,8 @@ export default function SubAgentProductsPage() {
         <p className="text-xs text-gray-600 text-center">
           Your cost is set by your parent agent. You earn the difference between your selling price and your cost.
         </p>
+
+        <SellerCheckerPricing getUrl="/subagent/my-checker-pricing" putUrl="/subagent/my-checker-pricing" theme="light" />
       </div>
     </div>
   );

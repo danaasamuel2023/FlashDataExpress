@@ -6,8 +6,13 @@ const User = require('../models/User');
 const Settings = require('../models/Settings');
 const paystackService = require('../services/paystackService');
 const { generateReference } = require('../utils/helpers');
-const { processSubShopPurchase } = require('../utils/storePurchaseProcessor');
+const { processSubShopPurchase, processSubShopCheckerPurchase } = require('../utils/storePurchaseProcessor');
+const datamartService = require('../services/datamartService');
 const ordersPaused = require('../middleware/ordersPaused');
+
+const CHECKER_TYPES = ['WAEC', 'BECE'];
+const subCheckerPrice = (sub, type) =>
+  type === 'WAEC' ? (sub?.checkerPricing?.waecPrice || 0) : (sub?.checkerPricing?.becePrice || 0);
 
 // GET /api/subshop/:slug — Get sub-agent store info (public)
 router.get('/:slug', async (req, res) => {
@@ -63,6 +68,105 @@ router.get('/:slug/products', async (req, res) => {
     res.json({ status: 'success', data: annotated });
   } catch (err) {
     console.error('SubShop products error:', err.message);
+    res.status(500).json({ status: 'error', message: 'Something went wrong. Please try again.' });
+  }
+});
+
+// GET /api/subshop/:slug/checkers — WAEC/BECE checkers this sub-agent sells.
+router.get('/:slug/checkers', async (req, res) => {
+  try {
+    const subAgent = await SubAgent.findOne({ storeSlug: req.params.slug, status: 'registered', isActive: true });
+    if (!subAgent) {
+      return res.status(404).json({ status: 'error', message: 'Store not found' });
+    }
+
+    const settings = await Settings.getSettings();
+    const platformEnabled = settings?.resultChecker?.enabled !== false;
+    if (!platformEnabled || !subAgent.checkerPricing?.enabled) {
+      return res.json({ status: 'success', data: { enabled: false, products: [] } });
+    }
+
+    let stock = {};
+    try {
+      const upstream = await datamartService.getResultCheckers();
+      for (const p of upstream) {
+        stock[(p.name || '').toUpperCase()] = { inStock: !!p.inStock, stockCount: p.stockCount ?? null };
+      }
+    } catch { stock = {}; }
+
+    const products = CHECKER_TYPES
+      .map(type => ({
+        checkerType: type,
+        name: `${type} Result Checker`,
+        price: subCheckerPrice(subAgent, type),
+        inStock: stock[type] ? stock[type].inStock : true,
+        stockCount: stock[type] ? stock[type].stockCount : null,
+      }))
+      .filter(p => p.price > 0);
+
+    res.json({ status: 'success', data: { enabled: products.length > 0, products } });
+  } catch (err) {
+    console.error('SubShop checkers error:', err.message);
+    res.status(500).json({ status: 'error', message: 'Something went wrong. Please try again.' });
+  }
+});
+
+// POST /api/subshop/:slug/buy-checker — customer buys a result checker (pays Paystack).
+router.post('/:slug/buy-checker', ordersPaused, async (req, res) => {
+  try {
+    const { checkerType, phoneNumber } = req.body;
+    if (!CHECKER_TYPES.includes(checkerType) || !phoneNumber) {
+      return res.status(400).json({ status: 'error', message: 'Checker type and phone number required' });
+    }
+
+    const subAgent = await SubAgent.findOne({ storeSlug: req.params.slug, status: 'registered', isActive: true }).populate('storeId');
+    if (!subAgent) {
+      return res.status(404).json({ status: 'error', message: 'Store not found' });
+    }
+    const store = subAgent.storeId;
+    if (!store || !store.isActive) {
+      return res.status(404).json({ status: 'error', message: 'Parent store is not available' });
+    }
+
+    const settings = await Settings.getSettings();
+    if (settings?.resultChecker?.enabled === false || !subAgent.checkerPricing?.enabled) {
+      return res.status(400).json({ status: 'error', message: 'Result checkers are not available at this store.' });
+    }
+
+    const sellingPrice = subCheckerPrice(subAgent, checkerType);
+    if (!sellingPrice || sellingPrice <= 0) {
+      return res.status(400).json({ status: 'error', message: 'This checker is not available right now.' });
+    }
+
+    const reference = generateReference('SUBC');
+    const agent = await User.findById(store.agentId);
+
+    const feePercent = settings?.paystack?.paymentFeePercent ?? 3;
+    const fee = Math.round(sellingPrice * feePercent) / 100;
+    const chargeAmount = Math.round((sellingPrice + fee) * 100) / 100;
+
+    const callbackUrl = `${process.env.FRONTEND_URL || 'http://localhost:3000'}/subshop/${subAgent.storeSlug}?payment=success`;
+
+    const paystack = await paystackService.initializeTransaction({
+      email: agent.email,
+      amount: chargeAmount,
+      reference,
+      callback_url: callbackUrl,
+      metadata: {
+        type: 'subagent_store_checker',
+        subAgentId: subAgent._id.toString(),
+        checkerType,
+        phoneNumber,
+        sellingPrice,
+      },
+    });
+
+    res.json({
+      status: 'success',
+      data: { authorization_url: paystack.authorization_url, reference },
+    });
+  } catch (err) {
+    console.error('SubShop buy-checker error:', err.message);
     res.status(500).json({ status: 'error', message: 'Something went wrong. Please try again.' });
   }
 });
@@ -151,10 +255,10 @@ router.get('/:slug/verify-payment', async (req, res) => {
       return res.status(400).json({ status: 'error', message: 'Payment not verified' });
     }
 
-    const result = await processSubShopPurchase({
-      reference,
-      metadata: verification.metadata,
-    });
+    const isChecker = verification.metadata?.type === 'subagent_store_checker';
+    const result = isChecker
+      ? await processSubShopCheckerPurchase({ reference, metadata: verification.metadata })
+      : await processSubShopPurchase({ reference, metadata: verification.metadata });
 
     if (!result.ok) {
       const code = result.reason === 'subagent_not_found' || result.reason === 'parent_store_not_found' ? 404 : 400;
@@ -162,10 +266,10 @@ router.get('/:slug/verify-payment', async (req, res) => {
     }
 
     if (result.alreadyProcessed) {
-      return res.json({ status: 'success', message: 'Already processed', data: result.purchase });
+      return res.json({ status: 'success', message: 'Already processed', data: { ...result.purchase.toObject?.() || result.purchase, kind: isChecker ? 'checker' : 'data' } });
     }
 
-    res.json({ status: 'success', data: result.purchase });
+    res.json({ status: 'success', data: { ...result.purchase.toObject?.() || result.purchase, kind: isChecker ? 'checker' : 'data' } });
   } catch (err) {
     console.error('SubShop verify error:', err.message);
     res.status(500).json({ status: 'error', message: 'Something went wrong. Please try again.' });

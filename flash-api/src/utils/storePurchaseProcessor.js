@@ -2,8 +2,17 @@ const Store = require('../models/Store');
 const StoreProduct = require('../models/StoreProduct');
 const SubAgent = require('../models/SubAgent');
 const DataPurchase = require('../models/DataPurchase');
+const ResultCheckerPurchase = require('../models/ResultCheckerPurchase');
 const Settings = require('../models/Settings');
 const datamartService = require('../services/datamartService');
+
+// Agent cost basis for a reselling checker sale (platform charges the agent this).
+const checkerAgentCost = (settings, type) =>
+  type === 'WAEC' ? (settings?.resultChecker?.agentWaecPrice || 0)
+                  : (settings?.resultChecker?.agentBecePrice || 0);
+// A seller's own customer price for a checker type, from their checkerPricing.
+const sellerCheckerPrice = (pricing, type) =>
+  type === 'WAEC' ? (pricing?.waecPrice || 0) : (pricing?.becePrice || 0);
 
 // Credit agent + sub-agent profit for a CONFIRMED store/sub-shop sale.
 // Profit is earned on delivery, not on order creation — crediting up front let
@@ -231,4 +240,147 @@ async function processSubShopPurchase({ reference, metadata }) {
   return { ok: true, alreadyProcessed: false, purchase };
 }
 
-module.exports = { processStorePurchase, processSubShopPurchase, creditStoreProfit };
+// Idempotent: fulfils a paid result-checker purchase on an AGENT shop. Verifies
+// the agent's current checker price, buys one checker from DataMart, delivers the
+// serial/PIN, and credits the agent's profit (price - agent cost) on success.
+// Mirrors processStorePurchase but for checkers (synchronous delivery).
+async function processStoreCheckerPurchase({ reference, metadata }) {
+  const meta = metadata || {};
+  if (!meta.storeId || !meta.checkerType || !meta.phoneNumber) {
+    return { ok: false, reason: 'missing_metadata' };
+  }
+
+  const existing = await ResultCheckerPurchase.findOne({ reference });
+  if (existing) {
+    return { ok: true, alreadyProcessed: true, purchase: existing };
+  }
+
+  const store = await Store.findById(meta.storeId);
+  if (!store) return { ok: false, reason: 'store_not_found' };
+
+  const settings = await Settings.getSettings();
+  const type = meta.checkerType;
+  const sellingPrice = sellerCheckerPrice(store.checkerPricing, type);
+  const agentCost = checkerAgentCost(settings, type);
+  const agentProfit = Math.round((sellingPrice - agentCost) * 100) / 100;
+
+  let purchase;
+  try {
+    purchase = await ResultCheckerPurchase.create({
+      userId: store.agentId,
+      checkerType: type,
+      phoneNumber: meta.phoneNumber,
+      price: sellingPrice,
+      costPrice: agentCost,
+      reference,
+      purchaseSource: 'store',
+      status: 'pending',
+      storeDetails: {
+        storeId: store._id,
+        storeName: store.storeName,
+        agentId: store.agentId,
+        agentProfit: Math.max(0, agentProfit),
+      },
+    });
+  } catch (err) {
+    if (err.code === 11000) {
+      const dup = await ResultCheckerPurchase.findOne({ reference });
+      return { ok: true, alreadyProcessed: true, purchase: dup };
+    }
+    throw err;
+  }
+
+  await fulfilChecker(purchase, type, meta.phoneNumber, reference);
+  return { ok: true, alreadyProcessed: false, purchase };
+}
+
+// Idempotent: fulfils a paid result-checker purchase on a SUB-AGENT shop. Splits
+// profit: sub-agent gets (their price - parent's price); agent gets (parent's
+// price - platform agent cost). Mirrors processSubShopPurchase.
+async function processSubShopCheckerPurchase({ reference, metadata }) {
+  const meta = metadata || {};
+  if (!meta.subAgentId || !meta.checkerType || !meta.phoneNumber) {
+    return { ok: false, reason: 'missing_metadata' };
+  }
+
+  const existing = await ResultCheckerPurchase.findOne({ reference });
+  if (existing) {
+    return { ok: true, alreadyProcessed: true, purchase: existing };
+  }
+
+  const subAgent = await SubAgent.findById(meta.subAgentId).populate('storeId');
+  if (!subAgent) return { ok: false, reason: 'subagent_not_found' };
+  const store = subAgent.storeId;
+  if (!store) return { ok: false, reason: 'parent_store_not_found' };
+
+  const settings = await Settings.getSettings();
+  const type = meta.checkerType;
+  const customerPrice = sellerCheckerPrice(subAgent.checkerPricing, type);
+  const subAgentCost = sellerCheckerPrice(store.checkerPricing, type); // parent's price
+  const agentCost = checkerAgentCost(settings, type);
+  const subAgentProfit = Math.round((customerPrice - subAgentCost) * 100) / 100;
+  const agentProfit = Math.round((subAgentCost - agentCost) * 100) / 100;
+
+  let purchase;
+  try {
+    purchase = await ResultCheckerPurchase.create({
+      userId: store.agentId,
+      checkerType: type,
+      phoneNumber: meta.phoneNumber,
+      price: customerPrice,
+      costPrice: agentCost,
+      reference,
+      purchaseSource: 'subshop',
+      status: 'pending',
+      storeDetails: {
+        storeId: store._id,
+        storeName: store.storeName,
+        agentId: store.agentId,
+        agentProfit: Math.max(0, agentProfit),
+        subAgentId: subAgent._id,
+        subAgentProfit: Math.max(0, subAgentProfit),
+      },
+    });
+  } catch (err) {
+    if (err.code === 11000) {
+      const dup = await ResultCheckerPurchase.findOne({ reference });
+      return { ok: true, alreadyProcessed: true, purchase: dup };
+    }
+    throw err;
+  }
+
+  await fulfilChecker(purchase, type, meta.phoneNumber, reference);
+  return { ok: true, alreadyProcessed: false, purchase };
+}
+
+// Buy the checker from DataMart, store the serial/PIN, and credit seller profit.
+// On provider failure the purchase is marked failed (no auto-refund — the buyer
+// paid via Paystack; the seller/admin resolves it manually, same as failed data
+// orders on storefronts). Reuses creditStoreProfit — it credits agent/sub-agent
+// pendingBalance idempotently for any doc carrying storeDetails.
+async function fulfilChecker(purchase, checkerType, phoneNumber, reference) {
+  try {
+    const result = await datamartService.purchaseResultChecker({ checkerType, phoneNumber, ref: reference });
+    if (!result?.serialNumber || !result?.pin) {
+      throw new Error('No checker returned by provider');
+    }
+    purchase.serialNumber = result.serialNumber;
+    purchase.pin = result.pin;
+    purchase.datamartReference = result.reference || result.purchaseId || null;
+    purchase.status = 'completed';
+    await purchase.save();
+    await creditStoreProfit(purchase);
+  } catch (err) {
+    purchase.status = 'failed';
+    purchase.failureReason = err.response?.data?.message || err.message || 'Provider error';
+    await purchase.save();
+  }
+}
+
+module.exports = {
+  processStorePurchase,
+  processSubShopPurchase,
+  creditStoreProfit,
+  processStoreCheckerPurchase,
+  processSubShopCheckerPurchase,
+};
