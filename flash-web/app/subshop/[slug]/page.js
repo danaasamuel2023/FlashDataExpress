@@ -1,6 +1,6 @@
 'use client';
 import React, { useState, useEffect, use } from 'react';
-import { ShoppingBag, Phone, Loader2, Check, Zap, AlertCircle, Shield, ChevronDown, Package, Clock, Wifi, Moon, Sun, MessageCircle } from 'lucide-react';
+import { ShoppingBag, Phone, Loader2, Check, Zap, AlertCircle, Shield, ChevronDown, Package, Clock, Wifi, Moon, Sun, MessageCircle, GraduationCap } from 'lucide-react';
 import toast from 'react-hot-toast';
 import NetworkIcon from '@/components/shared/NetworkIcon';
 import { formatCurrency } from '@/lib/constants';
@@ -96,14 +96,22 @@ export default function SubAgentShopPage({ params }) {
       ]);
       setStore(storeRes.data.data);
       setProducts(productsRes.data.data || []);
-      setCheckers(checkersRes.data.data?.products || []);
+      const checkerProducts = checkersRes.data.data?.products || [];
+      setCheckers(checkerProducts);
       const availableNets = NETWORKS.filter(n => (productsRes.data.data || []).some(p => p.network === n.id));
       if (availableNets.length > 0) setSelectedNetwork(availableNets[0].id);
+      if (window.location.hash === '#checker' && checkerProducts.length > 0) {
+        requestAnimationFrame(() => scrollToCheckers());
+      }
     } catch (err) {
       setError(err.response?.status === 404 ? 'Store not found' : 'Failed to load store');
     } finally {
       setLoading(false);
     }
+  };
+
+  const scrollToCheckers = () => {
+    document.getElementById('checker')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   };
 
   const buyChecker = async (checkerType) => {
@@ -284,7 +292,7 @@ export default function SubAgentShopPage({ params }) {
   const availableNetworks = NETWORKS.filter(n => products.some(p => p.network === n.id));
 
   return (
-    <div className={`min-h-screen transition-colors ${isDarkMode ? 'bg-gray-900' : 'bg-gradient-to-b from-gray-50 via-white to-gray-50'}`}>
+    <div className={`min-h-screen transition-colors ${isDarkMode ? 'bg-gray-900' : 'bg-linear-to-b from-gray-50 via-white to-gray-50'}`}>
       {/* Dark mode toggle */}
       <button
         onClick={toggleDarkMode}
@@ -351,7 +359,7 @@ export default function SubAgentShopPage({ params }) {
         {/* Network Selection Cards */}
         <div>
           <h2 className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-white mb-4 text-center">Choose Your Network</h2>
-          <div className="grid grid-cols-3 gap-3 sm:gap-4">
+          <div className={`grid ${checkers.length > 0 ? 'grid-cols-2 sm:grid-cols-4' : 'grid-cols-3'} gap-3 sm:gap-4`}>
             {availableNetworks.map(net => {
               const isActive = selectedNetwork === net.id;
               const netProducts = products.filter(p => p.network === net.id);
@@ -364,7 +372,7 @@ export default function SubAgentShopPage({ params }) {
                   }`}
                   style={{ ringColor: isActive ? primaryColor : undefined }}
                 >
-                  <div className={`bg-gradient-to-br ${net.gradient} p-4 sm:p-5 text-white`}>
+                  <div className={`bg-linear-to-br ${net.gradient} p-4 sm:p-5 text-white`}>
                     <div className="mb-2">
                       <NetworkIcon network={net.id} size={36} />
                     </div>
@@ -374,6 +382,20 @@ export default function SubAgentShopPage({ params }) {
                 </button>
               );
             })}
+            {checkers.length > 0 && (
+              <button
+                onClick={scrollToCheckers}
+                className="relative overflow-hidden rounded-xl shadow-md hover:shadow-xl transition-all hover:scale-105"
+              >
+                <div className="bg-linear-to-br from-emerald-500 to-emerald-700 p-4 sm:p-5 text-white">
+                  <div className="mb-2">
+                    <GraduationCap size={36} />
+                  </div>
+                  <h3 className="font-bold text-sm sm:text-base">Result Checker</h3>
+                  <p className="text-white/70 text-xs">WAEC &amp; BECE</p>
+                </div>
+              </button>
+            )}
           </div>
         </div>
 
@@ -461,7 +483,7 @@ export default function SubAgentShopPage({ params }) {
 
         {/* Result Checkers */}
         {checkers.length > 0 && (
-          <div>
+          <div id="checker" className="scroll-mt-4">
             <h2 className="text-lg font-bold text-gray-900 dark:text-white mb-1">Result Checkers</h2>
             <p className="text-xs text-gray-400 dark:text-gray-500 mb-3">WAEC &amp; BECE checkers — Serial &amp; PIN delivered instantly after payment.</p>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
