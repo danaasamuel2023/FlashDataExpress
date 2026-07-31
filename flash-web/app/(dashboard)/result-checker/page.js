@@ -1,30 +1,13 @@
 'use client';
 import { useState, useEffect } from 'react';
-import { GraduationCap, Loader2, Copy, Check, ShieldCheck, X, AlertTriangle, Clock, Minus, Plus } from 'lucide-react';
+import { GraduationCap, Loader2, Check, ShieldCheck, X, AlertTriangle, Clock, Minus, Plus } from 'lucide-react';
 import toast from 'react-hot-toast';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
+import Copyable from '@/components/ui/Copyable';
 import { formatCurrency } from '@/lib/constants';
 import { useAuth } from '@/context/AuthContext';
 import api from '@/lib/api';
-
-function Copyable({ label, value }) {
-  const [copied, setCopied] = useState(false);
-  return (
-    <div className="flex items-center justify-between gap-2 bg-black/30 rounded-lg px-3 py-2">
-      <div className="min-w-0">
-        <p className="text-[10px] text-text-muted uppercase tracking-wider">{label}</p>
-        <p className="text-sm font-bold text-white font-mono break-all">{value}</p>
-      </div>
-      <button
-        onClick={() => { navigator.clipboard.writeText(value); setCopied(true); toast.success(`${label} copied`); setTimeout(() => setCopied(false), 1500); }}
-        className="p-2 rounded-lg bg-primary/10 text-primary hover:bg-primary/20 flex-shrink-0"
-      >
-        {copied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
-      </button>
-    </div>
-  );
-}
 
 const STATUS_CLS = {
   completed: 'bg-success/10 text-success',

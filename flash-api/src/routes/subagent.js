@@ -8,10 +8,12 @@ const SubAgent = require('../models/SubAgent');
 const SubAgentProduct = require('../models/SubAgentProduct');
 const User = require('../models/User');
 const DataPurchase = require('../models/DataPurchase');
+const ResultCheckerPurchase = require('../models/ResultCheckerPurchase');
 const Withdrawal = require('../models/Withdrawal');
 const Settings = require('../models/Settings');
 const Announcement = require('../models/Announcement');
 const { formatPhone, generateReference } = require('../utils/helpers');
+const { escapeRegExp } = require('../utils/regex');
 const datamartService = require('../services/datamartService');
 
 // Middleware: authenticate sub-agent via JWT (same token system, but verifies they are a sub-agent)
@@ -465,6 +467,13 @@ router.get('/my-daily-sales', subagentAuth, async (req, res) => {
     const todayProfit = sales.reduce((sum, s) => sum + (s.storeDetails?.subAgentProfit || 0), 0);
     const todayRevenue = sales.reduce((sum, s) => sum + (s.price || 0), 0);
 
+    const checkerSales = await ResultCheckerPurchase.find({
+      'storeDetails.subAgentId': req.subAgent._id,
+      createdAt: { $gte: dayStart, $lt: dayEnd },
+    }).select('price').lean();
+    const checkerCount = checkerSales.length;
+    const checkerRevenue = checkerSales.reduce((sum, s) => sum + (s.price || 0), 0);
+
     res.json({
       status: 'success',
       data: {
@@ -472,11 +481,37 @@ router.get('/my-daily-sales', subagentAuth, async (req, res) => {
         todayProfit,
         todayRevenue,
         count: sales.length,
+        checkerCount,
+        checkerRevenue,
         date: dayStart.toISOString().slice(0, 10),
       },
     });
   } catch (err) {
     console.error('SubAgent daily-sales error:', err.message);
+    res.status(500).json({ status: 'error', message: 'Something went wrong. Please try again.' });
+  }
+});
+
+// GET /api/subagent/checker-sales?phone=<digits> — search this sub-agent's own
+// result-checker sales by phone number, so they can look up a lost serial/PIN.
+router.get('/checker-sales', subagentAuth, async (req, res) => {
+  try {
+    const phone = (req.query.phone || '').trim();
+    if (phone.length < 3 || phone.length > 20) {
+      return res.status(400).json({ status: 'error', message: 'Enter at least 3 digits of the phone number' });
+    }
+
+    const purchases = await ResultCheckerPurchase.find({
+      'storeDetails.subAgentId': req.subAgent._id,
+      phoneNumber: { $regex: escapeRegExp(phone), $options: 'i' },
+    })
+      .sort({ createdAt: -1 })
+      .limit(50)
+      .lean();
+
+    res.json({ status: 'success', data: { purchases, count: purchases.length } });
+  } catch (err) {
+    console.error('SubAgent checker-sales error:', err.message);
     res.status(500).json({ status: 'error', message: 'Something went wrong. Please try again.' });
   }
 });
