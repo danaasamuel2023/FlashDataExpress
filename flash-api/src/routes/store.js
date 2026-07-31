@@ -400,10 +400,18 @@ router.get('/daily-sales', auth, async (req, res) => {
     const todayProfit = sales.reduce((sum, s) => sum + (s.storeDetails?.agentProfit || 0), 0);
     const todayRevenue = sales.reduce((sum, s) => sum + (s.price || 0), 0);
 
+    const checkerSales = await ResultCheckerPurchase.find({
+      'storeDetails.storeId': store._id,
+      createdAt: { $gte: dayStart, $lt: dayEnd },
+    }).select('price').lean();
+    const checkerCount = checkerSales.length;
+    const checkerRevenue = checkerSales.reduce((sum, s) => sum + (s.price || 0), 0);
+
     res.json({
       status: 'success',
       data: {
         sales, todayProfit, todayRevenue, count: sales.length,
+        checkerCount, checkerRevenue,
         date: `${dayStart.getFullYear()}-${String(dayStart.getMonth() + 1).padStart(2, '0')}-${String(dayStart.getDate()).padStart(2, '0')}`,
       },
     });

@@ -195,7 +195,15 @@ export default function StoreSalesPage() {
 
       {/* Sales list */}
       <Card>
-        <h2 className="font-bold text-white mb-4">Sales on {dayLabel(date)}</h2>
+        <div className="mb-4">
+          <h2 className="font-bold text-white">Sales on {dayLabel(date)}</h2>
+          {data?.checkerCount > 0 && (
+            <p className="text-xs text-emerald-400 font-semibold mt-1 flex items-center gap-1.5">
+              <GraduationCap className="w-3.5 h-3.5" />
+              +{data.checkerCount} checker sale{data.checkerCount !== 1 ? 's' : ''} &middot; {formatCurrency(data.checkerRevenue)} revenue
+            </p>
+          )}
+        </div>
         {loading ? (
           <div className="flex justify-center py-12"><Loader2 className="w-5 h-5 text-primary animate-spin" /></div>
         ) : !data?.sales?.length ? (
