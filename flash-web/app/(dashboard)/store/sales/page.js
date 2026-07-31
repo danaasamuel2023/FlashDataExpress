@@ -1,10 +1,20 @@
 'use client';
 import { useState, useEffect } from 'react';
-import { Loader2, RefreshCw, ChevronLeft, ChevronRight, ShoppingBag, CalendarDays, DollarSign, ArrowLeft } from 'lucide-react';
+import { Loader2, RefreshCw, ChevronLeft, ChevronRight, ShoppingBag, CalendarDays, DollarSign, ArrowLeft, Search, GraduationCap } from 'lucide-react';
 import Link from 'next/link';
 import Card from '@/components/ui/Card';
+import Input from '@/components/ui/Input';
+import Button from '@/components/ui/Button';
+import Copyable from '@/components/ui/Copyable';
 import { formatCurrency, formatDate } from '@/lib/constants';
 import api from '@/lib/api';
+
+const CHECKER_STATUS_CLS = {
+  completed: 'bg-success/10 text-success',
+  refunded: 'bg-accent/10 text-accent',
+  failed: 'bg-error/10 text-error',
+  pending: 'bg-white/10 text-text-muted',
+};
 
 function toDateStr(d) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
@@ -34,6 +44,11 @@ export default function StoreSalesPage() {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
 
+  const [phone, setPhone] = useState('');
+  const [searching, setSearching] = useState(false);
+  const [searchResults, setSearchResults] = useState(null);
+  const [searchError, setSearchError] = useState('');
+
   useEffect(() => {
     fetchSales(date);
   }, [date]);
@@ -47,6 +62,27 @@ export default function StoreSalesPage() {
       setData(null);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleSearch = async (e) => {
+    e.preventDefault();
+    const trimmed = phone.trim();
+    if (trimmed.length < 3) {
+      setSearchError('Enter at least 3 digits of the phone number');
+      setSearchResults(null);
+      return;
+    }
+    setSearchError('');
+    setSearching(true);
+    try {
+      const res = await api.get(`/store/checker-sales?phone=${encodeURIComponent(trimmed)}`);
+      setSearchResults(res.data.data.purchases);
+    } catch (err) {
+      setSearchError(err.response?.data?.message || 'Search failed. Please try again.');
+      setSearchResults(null);
+    } finally {
+      setSearching(false);
     }
   };
 
@@ -198,6 +234,73 @@ export default function StoreSalesPage() {
                 </div>
               );
             })}
+          </div>
+        )}
+      </Card>
+
+      {/* Result checker sale lookup */}
+      <Card>
+        <h2 className="font-bold text-white mb-1">Find a Result Checker Sale</h2>
+        <p className="text-xs text-text-muted mb-4">
+          Look up a customer's serial number and PIN by phone number, in case they lost their screenshot. Searches your full sales history, not just {dayLabel(date)}.
+        </p>
+        <form onSubmit={handleSearch} className="flex flex-col sm:flex-row items-start sm:items-center gap-3">
+          <div className="flex-1 w-full">
+            <Input
+              icon={Search}
+              type="text"
+              placeholder="Last 8-9 digits of the customer's phone number"
+              value={phone}
+              onChange={(e) => setPhone(e.target.value)}
+              error={searchError}
+            />
+          </div>
+          <Button type="submit" loading={searching} disabled={searching}>
+            Search
+          </Button>
+        </form>
+
+        {searchResults && (
+          <div className="mt-4 space-y-3">
+            {searchResults.length === 0 ? (
+              <p className="text-text-muted text-sm text-center py-8">No matching checker sales.</p>
+            ) : (
+              searchResults.map((purchase) => {
+                const sub = purchase.storeDetails?.subAgentId;
+                const subLabel = sub && typeof sub === 'object'
+                  ? (sub.storeName || sub.contactPhone || sub.contactWhatsapp)
+                  : null;
+                return (
+                  <div key={purchase._id} className="border border-white/[0.06] rounded-xl p-3 space-y-2">
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-2">
+                        <GraduationCap className="w-4 h-4 text-emerald-400" />
+                        <p className="font-semibold text-sm text-white">{purchase.checkerType}</p>
+                        <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${CHECKER_STATUS_CLS[purchase.status] || CHECKER_STATUS_CLS.pending}`}>
+                          {purchase.status}
+                        </span>
+                      </div>
+                      <p className="text-[10px] text-text-muted">{formatDate(purchase.createdAt)}</p>
+                    </div>
+                    <p className="text-xs text-text-muted">{purchase.phoneNumber} &middot; {purchase.reference}</p>
+                    {subLabel && (
+                      <p className="text-[10px] font-semibold text-primary">
+                        Sub-agent: {subLabel}
+                        {sub.contactPhone && sub.storeName ? ` • ${sub.contactPhone}` : ''}
+                      </p>
+                    )}
+                    {purchase.status === 'completed' && purchase.serialNumber ? (
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                        <Copyable label="Serial Number" value={purchase.serialNumber} />
+                        <Copyable label="PIN" value={purchase.pin} />
+                      </div>
+                    ) : (
+                      <p className="text-xs text-text-muted italic">No serial/PIN yet — sale is {purchase.status}.</p>
+                    )}
+                  </div>
+                );
+              })
+            )}
           </div>
         )}
       </Card>

@@ -5,12 +5,14 @@ const StoreProduct = require('../models/StoreProduct');
 const SubAgent = require('../models/SubAgent');
 const SubAgentProduct = require('../models/SubAgentProduct');
 const DataPurchase = require('../models/DataPurchase');
+const ResultCheckerPurchase = require('../models/ResultCheckerPurchase');
 const Transaction = require('../models/Transaction');
 const User = require('../models/User');
 const Settings = require('../models/Settings');
 const Announcement = require('../models/Announcement');
 const paystackService = require('../services/paystackService');
 const { generateReference } = require('../utils/helpers');
+const { escapeRegExp } = require('../utils/regex');
 
 const STORE_ACTIVATION_FEE = 50; // GH₵50
 
@@ -471,6 +473,34 @@ router.get('/daily-history', auth, async (req, res) => {
     });
   } catch (err) {
     console.error('Store daily-history error:', err.message);
+    res.status(500).json({ status: 'error', message: 'Something went wrong. Please try again.' });
+  }
+});
+
+// GET /api/store/checker-sales?phone=<digits> — search this store's own result-checker
+// sales by phone number, so a seller can look up a lost serial/PIN for a customer.
+router.get('/checker-sales', auth, async (req, res) => {
+  try {
+    const store = await Store.findOne({ agentId: req.user._id });
+    if (!store) return res.status(404).json({ status: 'error', message: 'Store not found' });
+
+    const phone = (req.query.phone || '').trim();
+    if (phone.length < 3 || phone.length > 20) {
+      return res.status(400).json({ status: 'error', message: 'Enter at least 3 digits of the phone number' });
+    }
+
+    const purchases = await ResultCheckerPurchase.find({
+      'storeDetails.storeId': store._id,
+      phoneNumber: { $regex: escapeRegExp(phone), $options: 'i' },
+    })
+      .populate({ path: 'storeDetails.subAgentId', select: 'storeName contactPhone contactWhatsapp' })
+      .sort({ createdAt: -1 })
+      .limit(50)
+      .lean();
+
+    res.json({ status: 'success', data: { purchases, count: purchases.length } });
+  } catch (err) {
+    console.error('Store checker-sales error:', err.message);
     res.status(500).json({ status: 'error', message: 'Something went wrong. Please try again.' });
   }
 });
